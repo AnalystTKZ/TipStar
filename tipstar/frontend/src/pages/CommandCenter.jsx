@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Inbox, Globe, Zap, Trophy, RefreshCw } from 'lucide-react'
+import { Inbox, Globe, Zap, Trophy, RefreshCw, Sparkles, Send } from 'lucide-react'
 import WorldCupTicker from '../components/WorldCupTicker'
 import NewsFeed from '../components/NewsFeed'
 import DramaCard from '../components/DramaCard'
-import { getAnalyticsSummary, getPendingPosts, getDrama, harvestNews } from '../api/client'
+import { getAnalyticsSummary, getPendingPosts, getDrama, harvestNews, generatePosts, publishApproved } from '../api/client'
 
 function StatCard({ label, value, icon: Icon, color = '#6CABDD' }) {
   return (
@@ -25,9 +25,20 @@ export default function CommandCenter() {
   const [recentDrama, setRecentDrama] = useState([])
   const [harvesting, setHarvesting] = useState(false)
   const [harvestMsg, setHarvestMsg] = useState('')
-  useEffect(() => {
+  const [generating, setGenerating] = useState(false)
+  const [generateMsg, setGenerateMsg] = useState('')
+  const [publishing, setPublishing] = useState(false)
+  const [publishMsg, setPublishMsg] = useState('')
+  const [genLimit, setGenLimit] = useState(20)
+  const [genMinScore, setGenMinScore] = useState(5)
+
+  const reloadStats = () => {
     getAnalyticsSummary().then(r => setStats(r.data)).catch(() => {})
     getPendingPosts().then(r => setPendingCount(r.data.length)).catch(() => {})
+  }
+
+  useEffect(() => {
+    reloadStats()
     getDrama().then(r => setRecentDrama(r.data.slice(0, 3))).catch(() => {})
   }, [])
 
@@ -45,6 +56,36 @@ export default function CommandCenter() {
     }
   }
 
+  const handleGenerate = async () => {
+    setGenerating(true)
+    setGenerateMsg('')
+    try {
+      const r = await generatePosts(genLimit, genMinScore)
+      setGenerateMsg(r.data.message)
+      // Reload pending count after a short delay
+      setTimeout(() => { reloadStats() }, 8000)
+    } catch {
+      setGenerateMsg('Generation failed — check GROQ_API_KEY in .env.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handlePublish = async () => {
+    setPublishing(true)
+    setPublishMsg('')
+    try {
+      await publishApproved()
+      setPublishMsg('Published to X. Check the History tab.')
+      reloadStats()
+    } catch (e) {
+      const detail = e?.response?.data?.detail || 'Publish failed — check Twitter credentials.'
+      setPublishMsg(detail)
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-primary mb-6">Command Center</h1>
@@ -57,6 +98,60 @@ export default function CommandCenter() {
         <StatCard label="Pending Approval" value={pendingCount}         icon={Inbox}  color="#F59E0B" />
         <StatCard label="Approved Today"   value={stats?.approved}      icon={Trophy} color="#22C55E" />
         <StatCard label="World Cup Posts"  value={stats?.world_cup}     icon={Zap}    color="#EF4444" />
+      </div>
+
+      {/* Action bar */}
+      <div className="card mb-6">
+        <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-4">Content Pipeline</h2>
+        <div className="flex flex-wrap gap-4 items-end">
+
+          {/* Generate block */}
+          <div className="flex flex-col gap-2 flex-1 min-w-64">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted">
+                <span>Stories:</span>
+                <input
+                  type="number" min={1} max={50} value={genLimit}
+                  onChange={e => setGenLimit(Number(e.target.value))}
+                  className="w-14 bg-surface border border-border rounded px-2 py-1 text-white text-xs focus:border-primary outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted">
+                <span>Min score:</span>
+                <input
+                  type="number" min={1} max={10} value={genMinScore}
+                  onChange={e => setGenMinScore(Number(e.target.value))}
+                  className="w-12 bg-surface border border-border rounded px-2 py-1 text-white text-xs focus:border-primary outline-none"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"
+            >
+              <Sparkles size={14} className={generating ? 'animate-pulse' : ''} />
+              {generating ? 'Generating…' : 'Generate posts'}
+            </button>
+            {generateMsg && <p className="text-xs text-muted">{generateMsg}</p>}
+          </div>
+
+          <div className="w-px h-12 bg-border hidden md:block" />
+
+          {/* Publish block */}
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted">Posts approved and ready to go live</p>
+            <button
+              onClick={handlePublish}
+              disabled={publishing}
+              className="btn-ghost inline-flex items-center gap-2 text-sm disabled:opacity-60 border-green-600 text-green-400 hover:bg-green-600/10"
+            >
+              <Send size={14} className={publishing ? 'animate-pulse' : ''} />
+              {publishing ? 'Publishing…' : 'Publish to X'}
+            </button>
+            {publishMsg && <p className="text-xs text-muted">{publishMsg}</p>}
+          </div>
+        </div>
       </div>
 
       {/* Two-column layout */}

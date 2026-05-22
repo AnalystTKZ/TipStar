@@ -181,8 +181,23 @@ async def _sync_one_tournament(session, tournament: Tournament) -> dict:
     if updates:
         updates["name"] = tournament.name
         await upsert_tournament(session, updates)
+        # Mirror live data back to Notion
+        _write_tournament_to_notion(tournament.name, updates)
 
     return {"name": tournament.name, "skipped": False, "updates": list(updates.keys())}
+
+
+def _write_tournament_to_notion(name: str, updates: dict) -> None:
+    """Find the tournament's Notion page and update it with live data."""
+    try:
+        from backend.harvester.notion_harvester import _find_page_id, update_tournament
+        page_id = _find_page_id("tournaments", "Tournament Name", name)
+        if page_id:
+            update_tournament(page_id, updates)
+        else:
+            logger.debug("Tournament '%s' not found in Notion -- skipping write-back", name)
+    except Exception as exc:
+        logger.warning("Notion tournament write-back failed for '%s': %s", name, exc)
 
 
 async def _sync_wc_squads(session) -> int:

@@ -17,6 +17,21 @@ from backend.sync.sync_logger import log_sync_run
 logger = logging.getLogger(__name__)
 
 
+def _write_team_to_notion(name: str, facts: dict) -> None:
+    """Find the team's Notion page and mirror live-synced facts back."""
+    try:
+        from backend.harvester.notion_harvester import _find_page_id, update_team_live_data
+        page_id = _find_page_id("teams", "Team Name", name)
+        if not page_id:
+            page_id = _find_page_id("teams", "Name", name)
+        if page_id:
+            update_team_live_data(page_id, facts)
+        else:
+            logger.debug("Team '%s' not found in Notion -- skipping write-back", name)
+    except Exception as exc:
+        logger.warning("Notion team write-back failed for '%s': %s", name, exc)
+
+
 def fetch_team_profile(name: str) -> dict | None:
     try:
         from backend.sync.transfermarkt import get_club
@@ -63,6 +78,9 @@ async def sync_teams() -> dict:
                 team.updated_at = datetime.utcnow()
                 await session.flush()
                 updated += 1
+
+                # Mirror facts back to Notion
+                _write_team_to_notion(team.name, facts)
 
             except Exception as exc:
                 logger.error("Team sync failed for '%s': %s", team.name, exc)

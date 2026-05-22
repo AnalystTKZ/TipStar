@@ -151,6 +151,10 @@ class Player(Base):
     world_cup_appearances = Column(Integer, default=0)
     world_cup_goals = Column(Integer, default=0)
     status = Column(String(50), default="Active")
+    world_cup_squad = Column(Boolean, default=False)
+    market_value = Column(String(50))
+    instagram_followers = Column(String(50))
+    content_angle = Column(Text)   # comma-separated list from Notion multi-select
     notes = Column(Text)
     embedding = Column(Text)  # VECTOR(384) in Supabase
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -167,6 +171,10 @@ class Player(Base):
             "world_cup_appearances": self.world_cup_appearances,
             "world_cup_goals": self.world_cup_goals,
             "status": self.status,
+            "world_cup_squad": self.world_cup_squad,
+            "market_value": self.market_value,
+            "instagram_followers": self.instagram_followers,
+            "content_angle": self.content_angle,
             "notes": self.notes,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

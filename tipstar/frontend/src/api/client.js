@@ -14,6 +14,8 @@ export const approvePost      = (id) => api.patch(`/posts/${id}/approve`)
 export const rejectPost       = (id) => api.patch(`/posts/${id}/reject`)
 export const editPost         = (id, content) => api.patch(`/posts/${id}/edit`, { content })
 export const deletePost       = (id) => api.delete(`/posts/${id}`)
+export const generatePosts    = (limit = 20, minScore = 5) => api.post('/posts/generate', null, { params: { limit, min_score: minScore } })
+export const publishApproved  = () => api.post('/posts/publish')
 
 // News
 export const getNewsFeed   = (page = 1, size = 20) => api.get('/news', { params: { page, size } })

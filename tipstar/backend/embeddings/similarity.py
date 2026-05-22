@@ -59,6 +59,7 @@ async def search_similar_players(
     sql = text("""
         SELECT id, name, nationality, current_club, position, tier,
                world_cup_appearances, world_cup_goals, status,
+               world_cup_squad, market_value, content_angle, notes,
                1 - (embedding <=> :vec::vector) AS similarity
         FROM players
         WHERE embedding IS NOT NULL

@@ -557,6 +557,61 @@ def update_drama_status(notion_page_id: str, status: str, resolution_note: str =
     return result is not None
 
 
+def update_tournament(notion_page_id: str, updates: dict) -> bool:
+    """
+    UPDATE -- mirror live tournament data back to Notion.
+    Only writes fields that have values; never overwrites name or editorial fields.
+    """
+    if not NOTION_API_KEY or not notion_page_id:
+        return False
+
+    properties = {}
+    if updates.get("current_stage"):
+        properties["Current Stage"] = _select_prop(updates["current_stage"])
+    if updates.get("current_leader"):
+        properties["Current Leader"] = _text_prop(updates["current_leader"])
+    if updates.get("top_scorer"):
+        properties["Top Scorer"] = _text_prop(updates["top_scorer"])
+    if updates.get("matches_played") is not None:
+        properties["Matches Played"] = _number_prop(updates["matches_played"])
+    if updates.get("status"):
+        properties["Status"] = _select_prop(updates["status"])
+
+    if not properties:
+        return False
+
+    result = _update_page(notion_page_id, properties)
+    if result:
+        logger.info("Notion UPDATE tournament [%s]: %s", notion_page_id, list(properties.keys()))
+    return result is not None
+
+
+def update_team_live_data(notion_page_id: str, updates: dict) -> bool:
+    """
+    UPDATE -- mirror live-synced team facts back to Notion.
+    Writes: manager, world_cup_group, world_cup_status.
+    Never overwrites priority, playing_style, notes — editorial decisions.
+    """
+    if not NOTION_API_KEY or not notion_page_id:
+        return False
+
+    properties = {}
+    if updates.get("manager"):
+        properties["Manager"] = _text_prop(updates["manager"])
+    if updates.get("world_cup_group"):
+        properties["World Cup Group"] = _text_prop(updates["world_cup_group"])
+    if updates.get("world_cup_status") and updates["world_cup_status"] != "TBC":
+        properties["World Cup Status"] = _select_prop(updates["world_cup_status"])
+
+    if not properties:
+        return False
+
+    result = _update_page(notion_page_id, properties)
+    if result:
+        logger.info("Notion UPDATE team live data [%s]: %s", notion_page_id, list(properties.keys()))
+    return result is not None
+
+
 def update_content_calendar_status(notion_page_id: str, status: str, engagement_score: Optional[int] = None) -> bool:
     """UPDATE -- mark a calendar entry as Posted, Rejected, etc."""
     if not NOTION_API_KEY or not notion_page_id:

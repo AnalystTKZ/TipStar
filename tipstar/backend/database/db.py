@@ -232,9 +232,15 @@ async def upsert_player(session: AsyncSession, data: dict) -> Player:
         player = Player()
         session.add(player)
     for field in ["name", "nationality", "current_club", "position", "tier",
-                  "age", "world_cup_appearances", "world_cup_goals", "status", "notes"]:
+                  "age", "world_cup_appearances", "world_cup_goals", "status",
+                  "world_cup_squad", "market_value", "instagram_followers",
+                  "content_angle", "notes"]:
         if field in data:
-            setattr(player, field, data[field])
+            # content_angle may come in as a list from Notion multi-select
+            val = data[field]
+            if field == "content_angle" and isinstance(val, list):
+                val = ", ".join(str(v) for v in val if v)
+            setattr(player, field, val)
     if data.get("embedding"):
         player.embedding = json.dumps(data["embedding"])
     player.updated_at = datetime.utcnow()
