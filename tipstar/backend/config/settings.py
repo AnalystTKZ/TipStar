@@ -7,6 +7,14 @@ load_dotenv()
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/owl-alpha")
+OPENROUTER_FALLBACK_MODELS = os.getenv(
+    "OPENROUTER_FALLBACK_MODELS",
+    "openrouter/owl-alpha,openai/gpt-oss-120b:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+)
+OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost:8000")
+OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "TipStar")
 
 # --- Twitter / X ---
 TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
@@ -40,6 +48,10 @@ FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 # --- Harvester sources ---
 GUARDIAN_API_KEY = os.getenv("GUARDIAN_API_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+YOUTUBE_INTELLIGENCE_HOURS = int(os.getenv("YOUTUBE_INTELLIGENCE_HOURS", "4"))
+YOUTUBE_MAX_VIDEOS_PER_RUN = int(os.getenv("YOUTUBE_MAX_VIDEOS_PER_RUN", "5"))
+YOUTUBE_MAX_VIDEOS_PER_CHANNEL = int(os.getenv("YOUTUBE_MAX_VIDEOS_PER_CHANNEL", "2"))
+YOUTUBE_MIN_RELEVANCE_SCORE = int(os.getenv("YOUTUBE_MIN_RELEVANCE_SCORE", "8"))
 
 NEWSAPI_FOOTBALL_QUERY = (
     "'Manchester City' OR 'Man City' OR Guardiola OR Haaland OR Foden OR De Bruyne "

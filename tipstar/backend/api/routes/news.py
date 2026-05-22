@@ -49,6 +49,7 @@ async def harvest_news(db: AsyncSession = Depends(get_db)):
     deduplicate, and store fresh stories in the database.
     """
     from backend.harvester.harvest import harvest_all
+    from backend.harvester.deduplicator import mark_seen
 
     stories = harvest_all()
     inserted = 0
@@ -57,8 +58,10 @@ async def harvest_news(db: AsyncSession = Depends(get_db)):
         result = await insert_news(db, story)
         if result:
             inserted += 1
+            mark_seen(story)
         else:
             skipped += 1
+            mark_seen(story)
 
     await db.commit()
     logger.info("Manual harvest: %d inserted, %d skipped duplicates", inserted, skipped)

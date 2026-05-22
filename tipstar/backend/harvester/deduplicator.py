@@ -30,7 +30,11 @@ def _hash(story: dict) -> str:
 
 
 def deduplicate(stories: list[dict]) -> list[dict]:
-    """Return only stories not seen in the last 24 hours."""
+    """Return only stories not seen in the last 24 hours.
+
+    This function is intentionally read-only. Call mark_seen() after a story is
+    inserted or intentionally skipped so failed inserts can be retried.
+    """
     seen = _load()
     cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
     seen = {k: v for k, v in seen.items() if v >= cutoff}
@@ -40,8 +44,15 @@ def deduplicate(stories: list[dict]) -> list[dict]:
         h = _hash(story)
         if h not in seen:
             fresh.append(story)
-            seen[h] = datetime.utcnow().isoformat()
 
-    _save(seen)
     logger.info(f"Deduplicator: {len(fresh)} new out of {len(stories)}")
     return fresh
+
+
+def mark_seen(story: dict) -> None:
+    """Mark one successfully processed story as seen."""
+    seen = _load()
+    cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    seen = {k: v for k, v in seen.items() if v >= cutoff}
+    seen[_hash(story)] = datetime.utcnow().isoformat()
+    _save(seen)

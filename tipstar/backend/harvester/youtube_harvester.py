@@ -11,9 +11,16 @@ import logging
 import re
 import requests
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Iterable
 
-from backend.config.settings import YOUTUBE_API_KEY
+from backend.config.settings import (
+    YOUTUBE_API_KEY,
+    YOUTUBE_INTELLIGENCE_HOURS,
+    YOUTUBE_MAX_VIDEOS_PER_CHANNEL,
+    YOUTUBE_MAX_VIDEOS_PER_RUN,
+    YOUTUBE_MIN_RELEVANCE_SCORE,
+)
 from backend.database.db import get_session_factory, youtube_video_exists
 
 logger = logging.getLogger(__name__)
@@ -24,6 +31,7 @@ COMMENTS_ENDPOINT = "https://www.googleapis.com/youtube/v3/commentThreads"
 # Channel refs use handles where possible. The earlier hard-coded IDs were
 # unreliable, so IDs are resolved at runtime via the YouTube Data API.
 CHANNEL_REGISTRY = [
+    {"channel_ref": "UCiVg6vRhuyjsWgHkDNOig6A", "channel_name": "BeanymanSports", "type": "press_conf", "priority": 1, "active": True},
     {"channel_ref": "@mancity", "channel_name": "Man City Official", "type": "press_conf", "priority": 1, "active": True},
     {"channel_ref": "@fifa", "channel_name": "FIFA", "type": "press_conf", "priority": 1, "active": True},
     {"channel_ref": "@uefa", "channel_name": "UEFA", "type": "press_conf", "priority": 1, "active": True},
@@ -66,6 +74,47 @@ OPINION_KEYWORDS = [
     "reaction",
     "review",
     "explained",
+]
+
+HIGH_VALUE_TERMS = [
+    "man city",
+    "manchester city",
+    "guardiola",
+    "haaland",
+    "foden",
+    "rodri",
+    "messi",
+    "lionel messi",
+    "inter miami",
+    "argentina",
+    "press conference",
+    "pre-match",
+    "pre match",
+    "post-match",
+    "post match",
+    "interview",
+    "injury",
+    "team news",
+    "lineup",
+    "squad",
+    "transfer",
+    "talks",
+    "medical",
+    "world cup squad",
+]
+
+LOW_VALUE_TERMS = [
+    "every goal",
+    "all goals",
+    "classic",
+    "archive",
+    "throwback",
+    "relive",
+    "top 10",
+    "compilation",
+    "skills",
+    "funny moments",
+    "shorts",
 ]
 
 
@@ -177,18 +226,29 @@ def search_recent_videos(channel: dict, hours: int = 6) -> list[dict]:
             continue
         if not (_matches_keywords(combined, keywords) or _is_match_coverage(combined)):
             continue
+        published_at = snippet.get("publishedAt", "")
+        relevance_score = _score_video(channel, title, description, published_at)
+        if relevance_score < YOUTUBE_MIN_RELEVANCE_SCORE:
+            logger.debug(
+                "YouTube [%s]: low relevance score=%d title=%s",
+                channel["channel_name"],
+                relevance_score,
+                title,
+            )
+            continue
         videos.append({
             "video_id": video_id,
             "title": title,
-            "published_at": snippet.get("publishedAt", ""),
+            "published_at": published_at,
             "description": description,
             "channel_name": channel["channel_name"],
             "channel_type": channel["type"],
             "priority": channel["priority"],
+            "relevance_score": relevance_score,
             "url": f"https://www.youtube.com/watch?v={video_id}",
             "source_confidence": "official" if channel["type"] == "press_conf" else "trusted_opinion",
         })
-    return videos
+    return sorted(videos, key=_video_sort_key)
 
 
 def get_video_comments(video_id: str, max_results: int = 30) -> list[str]:
@@ -236,30 +296,58 @@ async def is_already_harvested(video_id: str) -> bool:
         return await youtube_video_exists(session, video_id)
 
 
-async def run_harvester(hours: int = 6, priority_limit: int | None = None) -> list[dict]:
+async def run_harvester(
+    hours: int | None = None,
+    priority_limit: int | None = None,
+    max_videos: int | None = None,
+) -> list[dict]:
     """
     Return new YouTube videos to process. Storage happens after transcript
     extraction so videos with no usable transcript can be retried later.
     """
+    hours = min(hours or YOUTUBE_INTELLIGENCE_HOURS, YOUTUBE_INTELLIGENCE_HOURS)
+    max_videos = max_videos or YOUTUBE_MAX_VIDEOS_PER_RUN
     videos = []
     for channel in _active_channels(priority_limit):
         try:
             batch = search_recent_videos(channel, hours=hours)
             skipped = 0
+            accepted_for_channel = 0
             for video in batch:
                 if await is_already_harvested(video["video_id"]):
                     skipped += 1
                     continue
+                if accepted_for_channel >= YOUTUBE_MAX_VIDEOS_PER_CHANNEL:
+                    skipped += 1
+                    continue
                 videos.append(video)
+                accepted_for_channel += 1
             logger.info(
-                "YouTube [%s]: found=%d skipped=%d",
+                "YouTube [%s]: found=%d accepted=%d skipped=%d",
                 channel["channel_name"],
                 len(batch),
+                accepted_for_channel,
                 skipped,
             )
         except requests.RequestException as exc:
             logger.error("YouTube search failed for %s: %s", channel["channel_name"], exc)
-    return videos
+    ranked = sorted(videos, key=_video_sort_key)
+    selected = ranked[:max_videos]
+    logger.info(
+        "YouTube selection: %d selected from %d candidates, hours=%d, min_score=%d",
+        len(selected),
+        len(ranked),
+        hours,
+        YOUTUBE_MIN_RELEVANCE_SCORE,
+    )
+    for video in selected:
+        logger.info(
+            "YouTube selected score=%d channel=%s title=%s",
+            video.get("relevance_score", 0),
+            video.get("channel_name", ""),
+            video.get("title", ""),
+        )
+    return selected
 
 
 def _resolve_channel_id(channel_ref: str) -> str | None:
@@ -294,6 +382,82 @@ def _active_channels(priority_limit: int | None = None) -> list[dict]:
     if priority_limit is not None:
         channels = [c for c in channels if int(c.get("priority", 3)) <= priority_limit]
     return channels
+
+
+def _score_video(channel: dict, title: str, description: str, published_at: str) -> int:
+    text = f"{title} {description}".lower()
+    score = 0
+
+    priority = int(channel.get("priority", 3))
+    if priority == 1:
+        score += 3
+    elif priority == 2:
+        score += 1
+
+    if channel.get("channel_name") == "BeanymanSports":
+        score += 2
+    if channel.get("channel_name") == "Man City Official":
+        score += 3
+
+    age_hours = _age_hours(published_at)
+    if age_hours is not None:
+        if age_hours <= 1:
+            score += 4
+        elif age_hours <= 3:
+            score += 3
+        elif age_hours <= 6:
+            score += 2
+        else:
+            score -= 4
+
+    for term in HIGH_VALUE_TERMS:
+        if term in text:
+            score += 2
+
+    if "press conference" in text:
+        score += 3
+    if "interview" in text:
+        score += 2
+    if "reaction" in text and any(term in text for term in ("man city", "messi", "world cup", "england", "guardiola")):
+        score += 2
+
+    for term in LOW_VALUE_TERMS:
+        if term in text:
+            score -= 4
+
+    return score
+
+
+def _video_sort_key(video: dict) -> tuple:
+    published = _parse_published(video.get("published_at"))
+    timestamp = published.timestamp() if published else 0
+    return (
+        -int(video.get("relevance_score", 0)),
+        int(video.get("priority", 3)),
+        -timestamp,
+    )
+
+
+def _age_hours(value: str) -> float | None:
+    published = _parse_published(value)
+    if not published:
+        return None
+    return (datetime.now(timezone.utc) - published).total_seconds() / 3600
+
+
+def _parse_published(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        try:
+            parsed = parsedate_to_datetime(str(value))
+        except Exception:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _is_spam_comment(text: str) -> bool:

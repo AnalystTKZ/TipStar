@@ -14,6 +14,7 @@ from backend.config.settings import MIN_RELEVANCE_SCORE
 from backend.database.db import get_session_factory, init_db, insert_news, insert_posts
 from backend.embeddings.enricher import enrich_story
 from backend.generator.groq_generator import generate_posts
+from backend.harvester.deduplicator import mark_seen
 from backend.harvester.harvest import harvest_all
 from backend.harvester.notion_harvester import (
     fetch_config,
@@ -81,12 +82,14 @@ async def run_harvest_pipeline():
                 generated = generate_posts(story, enriched_context=context)
                 if generated is None:
                     logger.info(f"Skipped (low relevance): {title}")
+                    mark_seen(story)
                     skipped += 1
                     continue
 
                 # Persist posts
                 count = await insert_posts(session, generated, news_id=news_id)
                 await session.commit()
+                mark_seen(story)
                 logger.info(f"Score {generated.get('relevance_score')}/10 -- {count} posts: {title}")
 
                 # Write new players, drama, and match results back to Notion

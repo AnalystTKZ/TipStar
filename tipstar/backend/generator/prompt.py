@@ -175,7 +175,7 @@ post_d is null if is_world_cup is false."""
 
 def build_user_prompt(news_item: dict, enriched_context: dict | None = None) -> str:
     """
-    Build the Groq user prompt, injecting enriched database context.
+    Build the LLM user prompt, injecting enriched database context.
     Includes players (with tiers + WC stats), teams, tournaments, drama, and past coverage.
     """
     title = news_item.get("title", "")

@@ -1,24 +1,13 @@
 import json
 import logging
 import re
-from typing import Optional
 
-from groq import Groq
-
-from backend.config.settings import GROQ_API_KEY, GROQ_MODEL, MIN_RELEVANCE_SCORE
+from backend.config.settings import MIN_RELEVANCE_SCORE
+from backend.generator.llm_router import chat_completion
 from backend.generator.prompt import SYSTEM_PROMPT, build_user_prompt
 from backend.embeddings.miniLM import encode
 
 logger = logging.getLogger(__name__)
-
-_client: Optional[Groq] = None
-
-
-def _get_client() -> Groq:
-    global _client
-    if _client is None:
-        _client = Groq(api_key=GROQ_API_KEY)
-    return _client
 
 
 def generate_posts(
@@ -26,32 +15,34 @@ def generate_posts(
     enriched_context: dict | None = None,
 ) -> dict | None:
     """
-    Call Groq with the news item and optional enriched context.
+    Call the configured LLM with the news item and optional enriched context.
     Returns structured post bundle, or None if below relevance threshold.
     """
-    if not GROQ_API_KEY:
-        logger.error("GROQ_API_KEY not set")
-        return None
-
     user_prompt = build_user_prompt(news_item, enriched_context)
 
     try:
-        client = _get_client()
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
+        result_msg = chat_completion(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.62,
             max_tokens=1500,
+            purpose=f"post generation: {news_item.get('title')}",
         )
-        raw = response.choices[0].message.content.strip()
+        raw = result_msg.content
         result = _parse_json(raw)
 
         if result is None:
-            logger.warning(f"Could not parse Groq JSON for: {news_item.get('title')}")
+            logger.warning(
+                "Could not parse %s JSON for: %s",
+                result_msg.provider,
+                news_item.get("title"),
+            )
             return None
+
+        result["_llm_provider"] = result_msg.provider
+        result["_llm_model"] = result_msg.model
 
         score = result.get("relevance_score", 0)
         if score < MIN_RELEVANCE_SCORE:
@@ -67,12 +58,12 @@ def generate_posts(
         return result
 
     except Exception as e:
-        logger.error(f"Groq generation failed for '{news_item.get('title')}': {e}")
+        logger.error(f"LLM generation failed for '{news_item.get('title')}': {e}")
         return None
 
 
 def _parse_json(raw: str) -> dict | None:
-    """Extract and parse the first JSON object from a Groq response."""
+    """Extract and parse the first JSON object from an LLM response."""
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

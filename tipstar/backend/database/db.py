@@ -5,8 +5,9 @@ Uses asyncpg driver for async I/O compatible with FastAPI.
 import json
 import logging
 import os
+import html
 from email.utils import parsedate_to_datetime
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 
 from sqlalchemy import func, and_, select, update, delete, text
@@ -195,8 +196,8 @@ async def insert_news(session: AsyncSession, item: dict) -> Optional[News]:
         return None
 
     news = News(
-        title=item.get("title", ""),
-        content=item.get("description", ""),
+        title=html.unescape(item.get("title", "") or ""),
+        content=html.unescape(item.get("description", "") or ""),
         source=item.get("source", ""),
         source_confidence=item.get("source_confidence", "trusted_news"),
         url=item.get("url"),
@@ -699,15 +700,21 @@ def _parse_dt(value) -> Optional[datetime]:
     if not value:
         return None
     if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except Exception:
-        pass
-    try:
-        return parsedate_to_datetime(str(value))
-    except Exception:
-        return None
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            parsed = None
+        if parsed is None:
+            try:
+                parsed = parsedate_to_datetime(str(value))
+            except Exception:
+                return None
+
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def _parse_date(value):
