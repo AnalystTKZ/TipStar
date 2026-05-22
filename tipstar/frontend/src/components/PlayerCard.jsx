@@ -1,4 +1,5 @@
-import { User, Trophy, Star } from 'lucide-react'
+import { useState } from 'react'
+import { User, Trophy, Trash2 } from 'lucide-react'
 
 const tierColors = {
   tier1: { text: '#F59E0B', label: 'Tier 1' },
@@ -6,8 +7,16 @@ const tierColors = {
   tier3: { text: '#8b949e', label: 'Tier 3' },
 }
 
-export default function PlayerCard({ player }) {
+export default function PlayerCard({ player, onDelete }) {
   const tier = tierColors[player.tier] || { text: '#8b949e', label: player.tier }
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    if (!confirming) { setConfirming(true); return }
+    setDeleting(true)
+    try { await onDelete(player.id) } finally { setDeleting(false); setConfirming(false) }
+  }
 
   return (
     <div className="card hover:border-primary transition-colors">
@@ -21,9 +30,21 @@ export default function PlayerCard({ player }) {
             <p className="text-xs text-muted">{player.nationality}</p>
           </div>
         </div>
-        {player.tier && (
-          <span className="text-xs font-bold" style={{ color: tier.text }}>{tier.label}</span>
-        )}
+        <div className="flex items-center gap-2">
+          {player.tier && (
+            <span className="text-xs font-bold" style={{ color: tier.text }}>{tier.label}</span>
+          )}
+          {onDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`p-1 rounded transition-colors ${confirming ? 'text-danger hover:text-red-300' : 'text-muted hover:text-danger'}`}
+              title={confirming ? 'Click again to confirm delete' : 'Remove from DB'}
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs text-muted mb-3">
@@ -48,6 +69,10 @@ export default function PlayerCard({ player }) {
 
       {player.notes && (
         <p className="text-xs text-muted mt-2 line-clamp-2">{player.notes}</p>
+      )}
+
+      {confirming && (
+        <p className="text-xs text-danger mt-2">Click trash again to confirm removal</p>
       )}
     </div>
   )

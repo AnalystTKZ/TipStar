@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy import func, and_, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from backend.database.models import Base, News, Post, Player, Team, Match, Drama, PostStatus, PostType
+from backend.database.models import Base, News, Post, Player, Team, Match, Drama, Tournament, PostStatus, PostType
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,8 @@ async def update_post_status(
     status: str,
     content: Optional[str] = None,
 ) -> Optional[dict]:
-    post = await session.get(Post, post_id)
+    result = await session.execute(select(Post).where(Post.id == int(post_id)))
+    post = result.scalar_one_or_none()
     if not post:
         return None
     post.status = PostStatus(status)
@@ -201,7 +202,8 @@ async def update_post_status(
 
 
 async def delete_post(session: AsyncSession, post_id: str) -> bool:
-    post = await session.get(Post, post_id)
+    result = await session.execute(select(Post).where(Post.id == int(post_id)))
+    post = result.scalar_one_or_none()
     if not post:
         return False
     await session.delete(post)
@@ -279,6 +281,83 @@ async def get_all_teams(session: AsyncSession) -> list[dict]:
 async def get_team_by_id(session: AsyncSession, team_id: str) -> Optional[dict]:
     result = await session.get(Team, team_id)
     return result.to_dict() if result else None
+
+
+async def delete_player(session: AsyncSession, player_id: str) -> bool:
+    result = await session.execute(select(Player).where(Player.id == player_id))
+    player = result.scalar_one_or_none()
+    if not player:
+        return False
+    await session.delete(player)
+    await session.flush()
+    return True
+
+
+async def delete_team(session: AsyncSession, team_id: str) -> bool:
+    result = await session.execute(select(Team).where(Team.id == team_id))
+    team = result.scalar_one_or_none()
+    if not team:
+        return False
+    await session.delete(team)
+    await session.flush()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Tournaments
+# ---------------------------------------------------------------------------
+
+def _parse_date(value) -> Optional[date]:
+    """Convert ISO string or date/datetime to a date object."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+async def upsert_tournament(session: AsyncSession, data: dict) -> Tournament:
+    result = await session.execute(select(Tournament).where(Tournament.name == data.get("name")))
+    tournament = result.scalar_one_or_none()
+    if not tournament:
+        tournament = Tournament()
+        session.add(tournament)
+    for field in [
+        "name", "type", "status", "host_country",
+        "total_teams", "total_matches", "matches_played", "current_stage",
+        "defending_champion", "current_leader", "favourite_to_win", "top_scorer",
+        "key_teams", "key_players", "coverage_priority", "content_angles", "notes",
+    ]:
+        if field in data and data[field] is not None:
+            setattr(tournament, field, data[field])
+    # Date fields need explicit parsing from ISO strings
+    if data.get("start_date") is not None:
+        tournament.start_date = _parse_date(data["start_date"])
+    if data.get("end_date") is not None:
+        tournament.end_date = _parse_date(data["end_date"])
+    tournament.updated_at = datetime.utcnow()
+    await session.flush()
+    return tournament
+
+
+async def get_all_tournaments(session: AsyncSession) -> list[dict]:
+    result = await session.execute(select(Tournament).order_by(Tournament.name))
+    return [r.to_dict() for r in result.scalars().all()]
+
+
+async def delete_tournament(session: AsyncSession, tournament_id: str) -> bool:
+    result = await session.execute(select(Tournament).where(Tournament.id == tournament_id))
+    t = result.scalar_one_or_none()
+    if not t:
+        return False
+    await session.delete(t)
+    await session.flush()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +464,7 @@ async def get_analytics_summary(session: AsyncSession) -> dict:
         "rejected": rejected or 0,
         "world_cup": wc_total or 0,
         "regular": regular_total or 0,
-        "top_post_type": top_type_row[0].value if top_type_row else "N/A",
+        "top_post_type": (top_type_row[0].value if isinstance(top_type_row[0], PostType) else top_type_row[0]) if top_type_row else "N/A",
     }
 
 

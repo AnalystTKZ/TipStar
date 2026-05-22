@@ -1,10 +1,13 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.db import get_db, get_news_page, get_news_by_id
+from backend.database.db import get_db, get_news_page, get_news_by_id, insert_news
 from backend.embeddings.similarity import search_similar_news
 from backend.embeddings.miniLM import encode
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/news", tags=["news"])
 
 
@@ -37,3 +40,26 @@ async def news_detail(news_id: str, db: AsyncSession = Depends(get_db)):
             pass
 
     return {**item, "similar_stories": similar}
+
+
+@router.post("/harvest")
+async def harvest_news(db: AsyncSession = Depends(get_db)):
+    """
+    Manually trigger the news harvester: fetch from NewsAPI + RSS,
+    deduplicate, and store fresh stories in the database.
+    """
+    from backend.harvester.harvest import harvest_all
+
+    stories = harvest_all()
+    inserted = 0
+    skipped = 0
+    for story in stories:
+        result = await insert_news(db, story)
+        if result:
+            inserted += 1
+        else:
+            skipped += 1
+
+    await db.commit()
+    logger.info("Manual harvest: %d inserted, %d skipped duplicates", inserted, skipped)
+    return {"inserted": inserted, "skipped": skipped, "total_fetched": len(stories)}

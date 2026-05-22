@@ -18,21 +18,39 @@ export const deletePost       = (id) => api.delete(`/posts/${id}`)
 // News
 export const getNewsFeed   = (page = 1, size = 20) => api.get('/news', { params: { page, size } })
 export const getNewsDetail = (id) => api.get(`/news/${id}`)
+export const harvestNews   = () => api.post('/news/harvest')
 
 // Knowledge Base
 export const getPlayers    = () => api.get('/players')
 export const getPlayer     = (id) => api.get(`/players/${id}`)
 export const createPlayer  = (data) => api.post('/players', data)
 export const updatePlayer  = (id, data) => api.patch(`/players/${id}`, data)
-export const syncPlayers   = () => api.post('/players/sync')
-export const scrapePlayer  = (data) => api.post('/players/scrape', data)
+export const deletePlayer  = (id) => api.delete(`/players/${id}`)
+export const syncPlayers         = () => api.post('/players/sync')
+export const scrapePlayer        = (data) => api.post('/players/scrape', data)
+export const importPlayersNotion = () => api.post('/players/import-from-notion')
 
 export const getTeams      = () => api.get('/teams')
 export const getTeam       = (id) => api.get(`/teams/${id}`)
 export const createTeam    = (data) => api.post('/teams', data)
 export const updateTeam    = (id, data) => api.patch(`/teams/${id}`, data)
+export const deleteTeam    = (id) => api.delete(`/teams/${id}`)
 export const syncTeams     = () => api.post('/teams/sync')
 export const scrapeTeam    = (data) => api.post('/teams/scrape', data)
+export const importTeamsNotion   = () => api.post('/teams/import-from-notion')
+
+export const getTournaments     = () => api.get('/tournaments')
+export const deleteTournament   = (id) => api.delete(`/tournaments/${id}`)
+export const importTournamentsNotion = () => api.post('/tournaments/import-from-notion')
+export const syncTournaments         = () => api.post('/tournaments/sync')
+
+// Trending
+export const getTrending = (days = 7, limit = 30) => api.get('/trending', { params: { days, limit } })
+
+// Notion
+export const getNotionDatabases  = () => api.get('/notion/databases')
+export const reloadNotionRegistry = () => api.post('/notion/registry/reload')
+export const importAllFromNotion = () => api.post('/notion/import')
 
 export const getMatches    = () => api.get('/matches')
 export const getMatch      = (id) => api.get(`/matches/${id}`)

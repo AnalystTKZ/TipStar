@@ -3,6 +3,7 @@ TipStar FastAPI backend entry point.
 Run with: uvicorn backend.api.main:app --reload --port 8000
 """
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.middleware import register_middleware
-from backend.api.routes import posts, news, players, teams, matches, drama, analytics
+from backend.api.routes import posts, news, players, teams, matches, drama, analytics, notion, trending, tournaments
 from backend.database.db import init_db
 from backend.embeddings.miniLM import _get_model
 
@@ -21,12 +22,23 @@ FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 
 
+def _load_model_background():
+    """Load MiniLM in a thread -- pure CPU work, no event loop needed."""
+    try:
+        logger.info("Loading MiniLM model in background...")
+        _get_model()
+        logger.info("MiniLM model ready")
+    except Exception as exc:
+        logger.error("MiniLM load error: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialise DB tables and pre-load MiniLM model
     logger.info("Starting TipStar backend...")
+    # DB init must run on FastAPI's event loop so the engine is bound to it.
     await init_db()
-    _get_model()  # Load MiniLM once at startup, not per request
+    # MiniLM is pure CPU -- load it in a background thread so startup finishes fast.
+    threading.Thread(target=_load_model_background, daemon=True).start()
     logger.info("TipStar backend ready")
     yield
     logger.info("TipStar backend shutting down")
@@ -49,6 +61,9 @@ app.include_router(teams.router, prefix="/api")
 app.include_router(matches.router, prefix="/api")
 app.include_router(drama.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(notion.router, prefix="/api")
+app.include_router(trending.router, prefix="/api")
+app.include_router(tournaments.router, prefix="/api")
 
 # Legacy direct API paths kept for scripts and older local usage.
 app.include_router(posts.router)
@@ -58,6 +73,7 @@ app.include_router(teams.router)
 app.include_router(matches.router)
 app.include_router(drama.router)
 app.include_router(analytics.router)
+app.include_router(notion.router)
 
 
 @app.get("/health")

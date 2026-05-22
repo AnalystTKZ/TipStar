@@ -182,9 +182,11 @@ async def sync_players() -> dict:
     """
     Pull all players from Supabase, fetch live facts from Transfermarkt + FBref,
     update Supabase and Notion. Returns run summary.
+
+    When called from the API the engine is already initialised by FastAPI lifespan.
+    When run standalone (CLI / GitHub Actions) init_db() is called explicitly below.
     """
     logger.info("Starting player sync (Transfermarkt + FBref)...")
-    await init_db()
     factory = get_session_factory()
 
     updated = 0
@@ -273,5 +275,9 @@ async def sync_players() -> dict:
     return {"updated": updated, "errors": errors, "sources": source_counts}
 
 
+async def _main():
+    await init_db()
+    await sync_players()
+
 if __name__ == "__main__":
-    asyncio.run(sync_players())
+    asyncio.run(_main())

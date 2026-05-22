@@ -1,4 +1,5 @@
-import { Shield } from 'lucide-react'
+import { useState } from 'react'
+import { Shield, Trash2 } from 'lucide-react'
 
 const wcStatusColor = {
   'Group Stage':     '#6CABDD',
@@ -11,8 +12,16 @@ const wcStatusColor = {
   'TBC':             '#8b949e',
 }
 
-export default function TeamCard({ team }) {
+export default function TeamCard({ team, onDelete }) {
   const statusColor = wcStatusColor[team.world_cup_status] || '#8b949e'
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    if (!confirming) { setConfirming(true); return }
+    setDeleting(true)
+    try { await onDelete(team.id) } finally { setDeleting(false); setConfirming(false) }
+  }
 
   return (
     <div className="card hover:border-primary transition-colors">
@@ -26,11 +35,23 @@ export default function TeamCard({ team }) {
             <p className="text-xs text-muted">{team.country} {team.league ? `- ${team.league}` : ''}</p>
           </div>
         </div>
-        {team.world_cup_group && (
-          <span className="badge bg-secondary text-primary border border-primary text-xs">
-            Group {team.world_cup_group}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {team.world_cup_group && (
+            <span className="badge bg-secondary text-primary border border-primary text-xs">
+              Group {team.world_cup_group}
+            </span>
+          )}
+          {onDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`p-1 rounded transition-colors ${confirming ? 'text-danger hover:text-red-300' : 'text-muted hover:text-danger'}`}
+              title={confirming ? 'Click again to confirm delete' : 'Remove from DB'}
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs mb-3">
@@ -54,6 +75,10 @@ export default function TeamCard({ team }) {
 
       {team.playing_style && (
         <p className="text-xs text-muted line-clamp-2">{team.playing_style}</p>
+      )}
+
+      {confirming && (
+        <p className="text-xs text-danger mt-2">Click trash again to confirm removal</p>
       )}
     </div>
   )

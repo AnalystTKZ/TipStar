@@ -91,26 +91,29 @@ class News(Base):
 class Post(Base):
     __tablename__ = "posts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     news_id = Column(UUID(as_uuid=True), ForeignKey("news.id"), nullable=True)
-    story_title = Column(Text)
+    story_title = Column(String(500))
     relevance_score = Column(Integer)
     is_world_cup = Column(Boolean, default=False)
     post_type = Column(
-        Enum(PostType, name="post_type_enum", create_constraint=True),
+        Enum(PostType, name="post_type_enum", create_constraint=False),
         nullable=False,
     )
     content = Column(Text, nullable=False)
     hashtags = Column(String(500))
     best_time = Column(String(200))
+    source_url = Column(String(500))
+    source_name = Column(String(200))
+    published_at = Column(String(100))
     status = Column(
-        Enum(PostStatus, name="post_status_enum", create_constraint=True),
+        Enum(PostStatus, name="post_status_enum", create_constraint=False),
         default=PostStatus.pending,
         nullable=False,
     )
     created_at = Column(DateTime, default=datetime.utcnow)
     posted_at = Column(DateTime, nullable=True)
-    embedding = Column(Text)  # JSON-serialised; VECTOR(384) in Supabase
+    embedding = Column(Text)
 
     news_item = relationship("News", back_populates="posts")
 
@@ -242,6 +245,61 @@ class Match(Base):
             "key_events": self.key_events,
             "coverage_status": self.coverage_status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Tournaments
+# ---------------------------------------------------------------------------
+
+class Tournament(Base):
+    __tablename__ = "tournaments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(Text, nullable=False, unique=True)
+    type = Column(String(100))
+    status = Column(String(50))
+    host_country = Column(String(200))
+    start_date = Column(Date)
+    end_date = Column(Date)
+    total_teams = Column(Integer)
+    total_matches = Column(Integer)
+    matches_played = Column(Integer)
+    current_stage = Column(String(100))
+    defending_champion = Column(String(200))
+    current_leader = Column(String(200))
+    favourite_to_win = Column(String(200))
+    top_scorer = Column(String(200))
+    key_teams = Column(Text)
+    key_players = Column(Text)
+    coverage_priority = Column(String(50))
+    content_angles = Column(Text)
+    notes = Column(Text)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "type": self.type,
+            "status": self.status,
+            "host_country": self.host_country,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "total_teams": self.total_teams,
+            "total_matches": self.total_matches,
+            "matches_played": self.matches_played,
+            "current_stage": self.current_stage,
+            "defending_champion": self.defending_champion,
+            "current_leader": self.current_leader,
+            "favourite_to_win": self.favourite_to_win,
+            "top_scorer": self.top_scorer,
+            "key_teams": self.key_teams,
+            "key_players": self.key_players,
+            "coverage_priority": self.coverage_priority,
+            "content_angles": self.content_angles,
+            "notes": self.notes,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

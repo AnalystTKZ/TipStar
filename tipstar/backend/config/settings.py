@@ -20,6 +20,8 @@ SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL")
 
 # --- Notion ---
 NOTION_API_KEY = os.getenv("NOTION_API_KEY")
+NOTION_HQ_PAGE_ID = os.getenv("NOTION_HQ_PAGE_ID", "3688031e4fc981acb97ef602b52eeb7f")
+# Legacy explicit IDs -- used as fallback if registry discovery fails
 NOTION_PLAYERS_DB_ID = os.getenv("NOTION_PLAYERS_DB_ID")
 NOTION_TEAMS_DB_ID = os.getenv("NOTION_TEAMS_DB_ID")
 NOTION_DRAMA_DB_ID = os.getenv("NOTION_DRAMA_DB_ID")

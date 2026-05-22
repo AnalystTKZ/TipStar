@@ -191,7 +191,6 @@ async def sync_world_cup() -> dict:
     Updates Notion Teams with World Cup Status.
     """
     logger.info("Starting World Cup sync...")
-    await init_db()
     factory = get_session_factory()
 
     groups_updated = 0
@@ -262,5 +261,9 @@ async def sync_world_cup() -> dict:
     }
 
 
+async def _main():
+    await init_db()
+    await sync_world_cup()
+
 if __name__ == "__main__":
-    asyncio.run(sync_world_cup())
+    asyncio.run(_main())

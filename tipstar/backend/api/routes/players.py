@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.db import get_db, get_all_players, get_player_by_id, upsert_player
+from backend.database.db import get_db, get_all_players, get_player_by_id, upsert_player, delete_player
 from backend.sync.player_sync import sync_players
 
 router = APIRouter(prefix="/players", tags=["players"])
@@ -44,7 +44,32 @@ async def list_players(db: AsyncSession = Depends(get_db)):
 
 @router.post("/sync")
 async def sync_all_players():
-    return await sync_players()
+    import asyncio
+    asyncio.create_task(sync_players())
+    return {"status": "started", "message": "Player sync running in background — check back in ~2 minutes."}
+
+
+@router.post("/import-from-notion")
+async def import_players_from_notion(db: AsyncSession = Depends(get_db)):
+    from backend.harvester.notion_harvester import fetch_players
+    players = fetch_players()
+    if not players:
+        return {"imported": 0, "message": "No players returned from Notion"}
+
+    imported = 0
+    errors = 0
+    for p in players:
+        try:
+            data = {k: v for k, v in p.items() if k != "_notion_page_id" and v is not None}
+            embedding = _player_embedding(data)
+            if embedding:
+                data["embedding"] = embedding
+            await upsert_player(db, data)
+            imported += 1
+        except Exception as exc:
+            errors += 1
+    await db.commit()
+    return {"imported": imported, "errors": errors, "total_from_notion": len(players)}
 
 
 @router.post("/scrape", status_code=201)
@@ -105,3 +130,12 @@ async def update_player(player_id: str, body: PlayerBody, db: AsyncSession = Dep
     player = await upsert_player(db, data)
     await db.commit()
     return player.to_dict()
+
+
+@router.delete("/{player_id}", status_code=200)
+async def remove_player(player_id: str, db: AsyncSession = Depends(get_db)):
+    deleted = await delete_player(db, player_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Player not found")
+    await db.commit()
+    return {"deleted": player_id}

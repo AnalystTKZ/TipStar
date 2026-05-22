@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.db import get_db, get_all_teams, get_team_by_id, upsert_team
+from backend.database.db import get_db, get_all_teams, get_team_by_id, upsert_team, delete_team
 from backend.sync.team_sync import sync_teams
 
 router = APIRouter(prefix="/teams", tags=["teams"])
@@ -43,7 +43,32 @@ async def list_teams(db: AsyncSession = Depends(get_db)):
 
 @router.post("/sync")
 async def sync_all_teams():
-    return await sync_teams()
+    import asyncio
+    asyncio.create_task(sync_teams())
+    return {"status": "started", "message": "Team sync running in background — check back in ~1 minute."}
+
+
+@router.post("/import-from-notion")
+async def import_teams_from_notion(db: AsyncSession = Depends(get_db)):
+    from backend.harvester.notion_harvester import fetch_teams
+    teams = fetch_teams()
+    if not teams:
+        return {"imported": 0, "message": "No teams returned from Notion"}
+
+    imported = 0
+    errors = 0
+    for t in teams:
+        try:
+            data = {k: v for k, v in t.items() if k != "_notion_page_id" and v is not None}
+            embedding = _team_embedding(data)
+            if embedding:
+                data["embedding"] = embedding
+            await upsert_team(db, data)
+            imported += 1
+        except Exception as exc:
+            errors += 1
+    await db.commit()
+    return {"imported": imported, "errors": errors, "total_from_notion": len(teams)}
 
 
 @router.post("/scrape", status_code=201)
@@ -93,6 +118,15 @@ async def create_team(body: TeamBody, db: AsyncSession = Depends(get_db)):
     team = await upsert_team(db, data)
     await db.commit()
     return team.to_dict()
+
+
+@router.delete("/{team_id}", status_code=200)
+async def remove_team(team_id: str, db: AsyncSession = Depends(get_db)):
+    deleted = await delete_team(db, team_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Team not found")
+    await db.commit()
+    return {"deleted": team_id}
 
 
 @router.patch("/{team_id}")

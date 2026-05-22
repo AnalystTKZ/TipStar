@@ -30,9 +30,11 @@ async def sync_teams() -> dict:
     """
     Refresh all existing teams in Supabase from Transfermarkt.
     Returns a run summary.
+
+    When called from the API the engine is already initialised by FastAPI lifespan.
+    When run standalone (CLI / GitHub Actions) init_db() is called via _main() below.
     """
     logger.info("Starting team sync (Transfermarkt)...")
-    await init_db()
     factory = get_session_factory()
 
     updated = 0
@@ -80,5 +82,9 @@ async def sync_teams() -> dict:
     return {"updated": updated, "errors": errors, "sources": {"transfermarkt": updated}}
 
 
+async def _main():
+    await init_db()
+    await sync_teams()
+
 if __name__ == "__main__":
-    asyncio.run(sync_teams())
+    asyncio.run(_main())

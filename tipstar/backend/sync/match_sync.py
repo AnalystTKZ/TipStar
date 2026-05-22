@@ -224,7 +224,6 @@ async def sync_matches(date_from: Optional[str] = None, date_to: Optional[str] =
     date_to = date_to or (today + timedelta(days=3)).isoformat()
 
     logger.info("Starting match sync: %s to %s", date_from, date_to)
-    await init_db()
     factory = get_session_factory()
 
     total_updated = 0
@@ -274,5 +273,9 @@ async def sync_matches(date_from: Optional[str] = None, date_to: Optional[str] =
     return {"updated": total_updated, "errors": total_errors, "api_used": dominant_api}
 
 
+async def _main():
+    await init_db()
+    await sync_matches()
+
 if __name__ == "__main__":
-    asyncio.run(sync_matches())
+    asyncio.run(_main())

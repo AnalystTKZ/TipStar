@@ -4,7 +4,8 @@ The model is loaded once at module import time and reused for all requests.
 Model: all-MiniLM-L6-v2 (384-dimensional vectors, fast and lightweight).
 """
 import logging
-from functools import lru_cache
+import os
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +15,16 @@ _model = None
 def _get_model():
     global _model
     if _model is None:
+        # Force CPU -- no GPU needed for 384-dim inference, avoids CUDA driver warnings
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+        # Suppress HuggingFace Hub unauthenticated-request noise
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        warnings.filterwarnings("ignore", category=UserWarning, module="torch.cuda")
+
         from sentence_transformers import SentenceTransformer
         logger.info("Loading MiniLM model (all-MiniLM-L6-v2)...")
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        _model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
         logger.info("MiniLM model loaded")
     return _model
 
