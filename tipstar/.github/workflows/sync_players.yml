@@ -1,0 +1,33 @@
+name: TipStar Player Sync
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  player-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run player sync
+        env:
+          SUPABASE_DB_URL:              ${{ secrets.SUPABASE_DB_URL }}
+          NOTION_API_KEY:               ${{ secrets.NOTION_API_KEY }}
+          NOTION_PLAYERS_DB_ID:         ${{ secrets.NOTION_PLAYERS_DB_ID }}
+          FOOTBALL_DATA_KEY:            ${{ secrets.FOOTBALL_DATA_KEY }}
+          API_FOOTBALL_KEY:             ${{ secrets.API_FOOTBALL_KEY }}
+          API_FOOTBALL_HOST:            ${{ secrets.API_FOOTBALL_HOST }}
+          ENABLE_API_FOOTBALL_PLAYER_SYNC: ${{ secrets.ENABLE_API_FOOTBALL_PLAYER_SYNC }}
+          ENABLE_FBREF_PLAYER_SYNC:     ${{ secrets.ENABLE_FBREF_PLAYER_SYNC }}
+        run: python -m backend.sync.player_sync

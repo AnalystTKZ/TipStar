@@ -1,0 +1,32 @@
+name: TipStar Match Sync
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  match-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run match sync
+        env:
+          SUPABASE_DB_URL:      ${{ secrets.SUPABASE_DB_URL }}
+          NOTION_API_KEY:       ${{ secrets.NOTION_API_KEY }}
+          NOTION_TEAMS_DB_ID:   ${{ secrets.NOTION_TEAMS_DB_ID }}
+          NOTION_MATCHES_DB_ID: ${{ secrets.NOTION_MATCHES_DB_ID }}
+          FOOTBALL_DATA_KEY:    ${{ secrets.FOOTBALL_DATA_KEY }}
+          API_FOOTBALL_KEY:     ${{ secrets.API_FOOTBALL_KEY }}
+          API_FOOTBALL_HOST:    ${{ secrets.API_FOOTBALL_HOST }}
+        run: python -m backend.sync.match_sync
