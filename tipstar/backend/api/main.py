@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.middleware import register_middleware
-from backend.api.routes import posts, news, players, teams, matches, drama, analytics, notion, trending, tournaments
+from backend.api.routes import posts, news, players, teams, matches, drama, analytics, notion, trending, tournaments, facts
 from backend.database.db import init_db
 from backend.embeddings.miniLM import _get_model
 
@@ -65,6 +65,7 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(notion.router, prefix="/api")
 app.include_router(trending.router, prefix="/api")
 app.include_router(tournaments.router, prefix="/api")
+app.include_router(facts.router, prefix="/api")
 
 # Legacy direct API paths kept for scripts and older local usage.
 app.include_router(posts.router)
@@ -75,6 +76,7 @@ app.include_router(matches.router)
 app.include_router(drama.router)
 app.include_router(analytics.router)
 app.include_router(notion.router)
+app.include_router(facts.router)
 
 
 @app.get("/health")

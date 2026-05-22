@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import html
+import uuid
 from email.utils import parsedate_to_datetime
 from datetime import datetime, date, timezone
 from typing import Optional
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from backend.database.models import (
     Base,
     Drama,
+    FactClaim,
     Match,
     News,
     Opinion,
@@ -180,6 +182,30 @@ async def _ensure_runtime_schema(conn) -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_press_conferences_video_id ON press_conferences(video_id)",
+        """
+        CREATE TABLE IF NOT EXISTS fact_claims (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            news_id UUID REFERENCES news(id) ON DELETE SET NULL,
+            claim_text TEXT NOT NULL,
+            normalized_claim TEXT NOT NULL UNIQUE,
+            claim_type VARCHAR(100),
+            entity_type VARCHAR(100),
+            entities TEXT,
+            temporal_scope VARCHAR(50),
+            source VARCHAR(200),
+            source_confidence VARCHAR(50),
+            source_url TEXT,
+            status VARCHAR(50) DEFAULT 'candidate',
+            confidence_score INTEGER DEFAULT 0,
+            evidence_count INTEGER DEFAULT 1,
+            evidence_urls TEXT,
+            embedding TEXT,
+            first_seen_at TIMESTAMP DEFAULT now(),
+            last_seen_at TIMESTAMP DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_fact_claims_status ON fact_claims(status)",
+        "CREATE INDEX IF NOT EXISTS idx_fact_claims_claim_type ON fact_claims(claim_type)",
     ]
     for statement in statements:
         await conn.execute(text(statement))
@@ -222,6 +248,16 @@ async def get_news_page(session: AsyncSession, page: int = 1, size: int = 20) ->
 async def get_news_by_id(session: AsyncSession, news_id: str) -> Optional[dict]:
     result = await session.get(News, news_id)
     return result.to_dict() if result else None
+
+
+async def set_news_embedding(session: AsyncSession, news_id: str, embedding: list[float]) -> bool:
+    result = await session.execute(select(News).where(News.id == _uuid_or_none(news_id)))
+    news = result.scalar_one_or_none()
+    if not news:
+        return False
+    news.embedding = json.dumps(embedding)
+    await session.flush()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +609,152 @@ async def get_all_drama(session: AsyncSession) -> list[dict]:
 async def get_drama_by_id(session: AsyncSession, drama_id: str) -> Optional[dict]:
     result = await session.get(Drama, drama_id)
     return result.to_dict() if result else None
+
+
+# ---------------------------------------------------------------------------
+# Fact Claims
+# ---------------------------------------------------------------------------
+
+_SOURCE_CONFIDENCE_SCORE = {
+    "official": 95,
+    "trusted_news": 75,
+    "trusted_opinion": 45,
+    "live_api": 70,
+    "notion_editorial": 50,
+    "db_historical": 35,
+}
+
+
+async def upsert_fact_claim(session: AsyncSession, data: dict) -> FactClaim:
+    normalized = data.get("normalized_claim")
+    if not normalized:
+        raise ValueError("normalized_claim is required")
+
+    result = await session.execute(
+        select(FactClaim).where(FactClaim.normalized_claim == normalized)
+    )
+    claim = result.scalar_one_or_none()
+
+    source_confidence = data.get("source_confidence") or "trusted_news"
+    source_score = _SOURCE_CONFIDENCE_SCORE.get(source_confidence, 40)
+    source_url = data.get("source_url")
+    now = datetime.utcnow()
+
+    if not claim:
+        claim = FactClaim(
+            news_id=_uuid_or_none(data.get("news_id")),
+            claim_text=data.get("claim_text", ""),
+            normalized_claim=normalized,
+            claim_type=data.get("claim_type"),
+            entity_type=data.get("entity_type"),
+            entities=_json_list(data.get("entities")),
+            temporal_scope=data.get("temporal_scope"),
+            source=data.get("source"),
+            source_confidence=source_confidence,
+            source_url=source_url,
+            confidence_score=source_score,
+            evidence_count=1,
+            evidence_urls=json.dumps([source_url] if source_url else [], ensure_ascii=False),
+            embedding=json.dumps(data.get("embedding")) if data.get("embedding") else None,
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        session.add(claim)
+    else:
+        evidence_urls = _parse_json_list(claim.evidence_urls)
+        if source_url and source_url not in evidence_urls:
+            evidence_urls.append(source_url)
+            claim.evidence_count = (claim.evidence_count or 0) + 1
+        claim.confidence_score = max(claim.confidence_score or 0, source_score)
+        claim.evidence_urls = json.dumps(evidence_urls, ensure_ascii=False)
+        claim.last_seen_at = now
+        if not claim.embedding and data.get("embedding"):
+            claim.embedding = json.dumps(data["embedding"])
+        if not claim.source_confidence or source_score > _SOURCE_CONFIDENCE_SCORE.get(claim.source_confidence, 0):
+            claim.source_confidence = source_confidence
+            claim.source = data.get("source")
+            claim.source_url = source_url
+
+    claim.status = _claim_status(
+        source_confidence=claim.source_confidence,
+        confidence_score=claim.confidence_score or 0,
+        evidence_count=claim.evidence_count or 1,
+        temporal_scope=claim.temporal_scope,
+    )
+    await session.flush()
+    return claim
+
+
+async def get_verified_fact_claims(session: AsyncSession, limit: int = 50) -> list[dict]:
+    result = await session.execute(
+        select(FactClaim)
+        .where(FactClaim.status == "verified")
+        .order_by(FactClaim.last_seen_at.desc())
+        .limit(limit)
+    )
+    return [r.to_dict() for r in result.scalars().all()]
+
+
+async def get_fact_claims(
+    session: AsyncSession,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    query = select(FactClaim)
+    if status:
+        query = query.where(FactClaim.status == status)
+    query = query.order_by(FactClaim.last_seen_at.desc()).limit(limit)
+    result = await session.execute(query)
+    return [r.to_dict() for r in result.scalars().all()]
+
+
+def _claim_status(
+    *,
+    source_confidence: str,
+    confidence_score: int,
+    evidence_count: int,
+    temporal_scope: str | None,
+) -> str:
+    if source_confidence == "official":
+        return "verified"
+    if evidence_count >= 2 and confidence_score >= 75:
+        return "verified"
+    if temporal_scope == "rumour":
+        return "candidate"
+    return "candidate"
+
+
+def _json_list(value) -> str:
+    if isinstance(value, str):
+        items = [v.strip() for v in value.split(",") if v.strip()]
+    elif isinstance(value, list):
+        items = [str(v).strip() for v in value if str(v).strip()]
+    else:
+        items = []
+    return json.dumps(items, ensure_ascii=False)
+
+
+def _parse_json_list(value) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, list):
+            return [str(v) for v in parsed if v]
+    except Exception:
+        pass
+    return [str(value)]
+
+
+def _uuid_or_none(value):
+    if not value:
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------

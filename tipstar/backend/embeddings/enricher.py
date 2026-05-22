@@ -12,6 +12,7 @@ from backend.embeddings.similarity import (
     search_similar_news,
     search_similar_players,
     search_similar_drama,
+    search_relevant_facts,
     search_relevant_opinions,
     search_relevant_quotes,
 )
@@ -46,6 +47,7 @@ async def enrich_story(
     related_players = await search_similar_players(session, embedding, top_k=5)
     related_teams = await _search_similar_teams(session, embedding, top_k=3)
     related_drama = await search_similar_drama(session, embedding, top_k=3)
+    relevant_facts = await search_relevant_facts(session, embedding, top_k=5)
     relevant_quotes = await search_relevant_quotes(session, embedding, top_k=3)
     relevant_opinions = await search_relevant_opinions(session, embedding, top_k=3)
     active_tournaments = await _get_active_tournaments(session)
@@ -57,6 +59,7 @@ async def enrich_story(
         "related_teams": _format_teams(related_teams),
         "active_tournaments": _format_tournaments(active_tournaments),
         "related_drama": _format_drama(related_drama),
+        "relevant_facts": _format_facts(relevant_facts),
         "relevant_quotes": _format_quotes(relevant_quotes),
         "relevant_opinions": _format_opinions(relevant_opinions),
         "editorial_notes": editorial_notes or "",
@@ -245,6 +248,29 @@ def _format_drama(rows: list[dict]) -> str:
             line += f" - {summary}"
         lines.append(line)
     return "\n".join(lines)
+
+
+def _format_facts(rows: list[dict]) -> str:
+    if not rows:
+        return "No verified fact claims found."
+    lines = []
+    for r in rows:
+        sim = r.get("similarity", 0)
+        if sim < 0.35:
+            continue
+        claim = r.get("claim_text") or ""
+        source = r.get("source") or ""
+        confidence = r.get("source_confidence") or "trusted_news"
+        evidence_count = r.get("evidence_count") or 1
+        claim_type = r.get("claim_type") or "general"
+        temporal = r.get("temporal_scope") or "current"
+        line = (
+            f"- [VERIFIED_FACT] {claim} | type: {claim_type} | "
+            f"scope: {temporal} | source: [{confidence.upper()}] {source} | "
+            f"evidence_count: {evidence_count} | sim: {sim:.2f}"
+        )
+        lines.append(line)
+    return "\n".join(lines) if lines else "No verified fact claims found."
 
 
 def _format_quotes(rows: list[dict]) -> str:

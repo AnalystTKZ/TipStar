@@ -175,6 +175,29 @@ async def search_relevant_opinions(
         return []
 
 
+async def search_relevant_facts(
+    session: AsyncSession,
+    embedding: list[float],
+    top_k: int = 5,
+) -> list[dict]:
+    sql = text("""
+        SELECT id, claim_text, claim_type, entity_type, entities, temporal_scope,
+               source, source_confidence, status, confidence_score, evidence_count,
+               evidence_urls, last_seen_at, embedding
+        FROM fact_claims
+        WHERE embedding IS NOT NULL
+          AND status = 'verified'
+        ORDER BY last_seen_at DESC
+        LIMIT 500
+    """)
+    try:
+        result = await session.execute(sql)
+        return _rank_rows([dict(r) for r in result.mappings().all()], embedding, top_k)
+    except Exception as e:
+        logger.warning("similarity search (fact_claims) failed: %s", e)
+        return []
+
+
 async def semantic_search_knowledge(
     session: AsyncSession,
     embedding: list[float],

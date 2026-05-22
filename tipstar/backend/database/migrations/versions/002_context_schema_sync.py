@@ -87,10 +87,35 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_press_conferences_video_id ON press_conferences(video_id)")
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS fact_claims (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            news_id UUID REFERENCES news(id) ON DELETE SET NULL,
+            claim_text TEXT NOT NULL,
+            normalized_claim TEXT NOT NULL UNIQUE,
+            claim_type VARCHAR(100),
+            entity_type VARCHAR(100),
+            entities TEXT,
+            temporal_scope VARCHAR(50),
+            source VARCHAR(200),
+            source_confidence VARCHAR(50),
+            source_url TEXT,
+            status VARCHAR(50) DEFAULT 'candidate',
+            confidence_score INTEGER DEFAULT 0,
+            evidence_count INTEGER DEFAULT 1,
+            evidence_urls TEXT,
+            embedding TEXT,
+            first_seen_at TIMESTAMP DEFAULT now(),
+            last_seen_at TIMESTAMP DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_fact_claims_status ON fact_claims(status)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_fact_claims_claim_type ON fact_claims(claim_type)")
 
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS tournaments")
+    op.execute("DROP TABLE IF EXISTS fact_claims")
     op.execute("DROP TABLE IF EXISTS press_conferences")
     op.execute("DROP TABLE IF EXISTS opinions")
     op.execute("ALTER TABLE players DROP COLUMN IF EXISTS content_angle")

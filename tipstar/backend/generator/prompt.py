@@ -21,6 +21,9 @@ You will see facts tagged with confidence labels. Apply them strictly:
 [OFFICIAL_QUOTE] - Exact press conference quotes extracted from official or trusted YouTube sources.
   Exact quote text is sacred. If used, copy it exactly and keep quotation marks.
 
+[VERIFIED_FACT] - Extracted claims that passed TipStar verification rules.
+  Safe to use as supporting context. Prefer these over [DB_HISTORICAL] when they conflict.
+
 [TRUSTED_OPINION] - Pundit or fan debate angles extracted from trusted YouTube channels.
   Use for tone, controversy, and audience reaction. Do not present opinion as fact.
 
@@ -199,6 +202,7 @@ def build_user_prompt(news_item: dict, enriched_context: dict | None = None) -> 
         teams = enriched_context.get("related_teams", "")
         tournaments = enriched_context.get("active_tournaments", "")
         drama = enriched_context.get("related_drama", "")
+        facts = enriched_context.get("relevant_facts", "")
         quotes = enriched_context.get("relevant_quotes", "")
         opinions = enriched_context.get("relevant_opinions", "")
         notes = enriched_context.get("editorial_notes", "")
@@ -213,6 +217,8 @@ def build_user_prompt(news_item: dict, enriched_context: dict | None = None) -> 
             parts.append(f"\nACTIVE TOURNAMENTS (current context):\n{tournaments}")
         if drama and "No related" not in drama:
             parts.append(f"\nONGOING DRAMA (reference where relevant):\n{drama}")
+        if facts and "No verified" not in facts:
+            parts.append(f"\nVERIFIED FACT MEMORY:\n{facts}")
         if quotes and "No relevant" not in quotes:
             parts.append(f"\nPRESS CONFERENCE QUOTES RELATED TO THIS STORY:\n{quotes}")
         if opinions and "No relevant" not in opinions:

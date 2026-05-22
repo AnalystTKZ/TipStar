@@ -356,6 +356,54 @@ class Drama(Base):
 
 
 # ---------------------------------------------------------------------------
+# Fact Claims
+# ---------------------------------------------------------------------------
+
+class FactClaim(Base):
+    __tablename__ = "fact_claims"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    news_id = Column(UUID(as_uuid=True), ForeignKey("news.id"), nullable=True)
+    claim_text = Column(Text, nullable=False)
+    normalized_claim = Column(Text, nullable=False, unique=True)
+    claim_type = Column(String(100))
+    entity_type = Column(String(100))
+    entities = Column(Text)
+    temporal_scope = Column(String(50))
+    source = Column(String(200))
+    source_confidence = Column(String(50))
+    source_url = Column(Text)
+    status = Column(String(50), default="candidate")
+    confidence_score = Column(Integer, default=0)
+    evidence_count = Column(Integer, default=1)
+    evidence_urls = Column(Text)
+    embedding = Column(Text)
+    first_seen_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "news_id": str(self.news_id) if self.news_id else None,
+            "claim_text": self.claim_text,
+            "normalized_claim": self.normalized_claim,
+            "claim_type": self.claim_type,
+            "entity_type": self.entity_type,
+            "entities": self.entities,
+            "temporal_scope": self.temporal_scope,
+            "source": self.source,
+            "source_confidence": self.source_confidence,
+            "source_url": self.source_url,
+            "status": self.status,
+            "confidence_score": self.confidence_score,
+            "evidence_count": self.evidence_count,
+            "evidence_urls": self.evidence_urls,
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
+            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+        }
+
+
+# ---------------------------------------------------------------------------
 # YouTube Intelligence
 # ---------------------------------------------------------------------------
 

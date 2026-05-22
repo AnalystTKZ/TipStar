@@ -141,10 +141,12 @@ async def remove_post(post_id: str, db: AsyncSession = Depends(get_db)):
 
 
 async def _run_generate(job_id: str, limit: int, min_score: int):
-    """Background task: process recent unprocessed news through Groq."""
-    from backend.database.db import get_session_factory, insert_posts
+    """Background task: process recent unprocessed news through the LLM."""
+    from backend.config.settings import FACT_EXTRACTION_ENABLED
+    from backend.database.db import get_session_factory, insert_posts, set_news_embedding
     from backend.embeddings.enricher import enrich_story
     from backend.generator.groq_generator import generate_posts
+    from backend.harvester.fact_extractor import extract_and_store_facts
     from backend.harvester.notion_harvester import fetch_config, write_back_from_story
     from backend.harvester.notion_sync import sync_notion_knowledge
     from sqlalchemy import text
@@ -213,11 +215,15 @@ async def _run_generate(job_id: str, limit: int, min_score: int):
             )
             try:
                 context = await enrich_story(session, news_item, editorial_notes=editorial_notes)
+                if context.get("embedding"):
+                    await set_news_embedding(session, str(row["id"]), context["embedding"])
                 generated = await asyncio.to_thread(generate_posts, news_item, context)
                 if generated is None or generated.get("relevance_score", 0) < min_score:
                     skipped_count += 1
                     _set_job(job_id, skipped=skipped_count, last_story=title, message=f"Skipped story {index}/{len(rows)}.")
                     continue
+                if FACT_EXTRACTION_ENABLED:
+                    await extract_and_store_facts(session, news_item, str(row["id"]))
                 count = await insert_posts(session, generated, news_id=row["id"])
                 await session.commit()
                 generated_count += count

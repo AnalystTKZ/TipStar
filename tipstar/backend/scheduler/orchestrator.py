@@ -10,11 +10,12 @@ from datetime import date, datetime, time as dt_time, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from backend.config.settings import MIN_RELEVANCE_SCORE
-from backend.database.db import get_session_factory, init_db, insert_news, insert_posts
+from backend.config.settings import FACT_EXTRACTION_ENABLED, MIN_RELEVANCE_SCORE
+from backend.database.db import get_session_factory, init_db, insert_news, insert_posts, set_news_embedding
 from backend.embeddings.enricher import enrich_story
 from backend.generator.groq_generator import generate_posts
 from backend.harvester.deduplicator import mark_seen
+from backend.harvester.fact_extractor import extract_and_store_facts
 from backend.harvester.harvest import harvest_all
 from backend.harvester.notion_harvester import (
     fetch_config,
@@ -72,19 +73,25 @@ async def run_harvest_pipeline():
                 if news_row:
                     await session.flush()
                     news_id = news_row.id
+                    story["id"] = str(news_id)
                 else:
                     news_id = None
 
                 # Enrich with semantic context
                 context = await enrich_story(session, story, editorial_notes)
+                if news_id and context.get("embedding"):
+                    await set_news_embedding(session, str(news_id), context["embedding"])
 
-                # Generate post variants via Groq
+                # Generate post variants via LLM
                 generated = generate_posts(story, enriched_context=context)
                 if generated is None:
                     logger.info(f"Skipped (low relevance): {title}")
                     mark_seen(story)
                     skipped += 1
                     continue
+
+                if FACT_EXTRACTION_ENABLED:
+                    await extract_and_store_facts(session, story, str(news_id) if news_id else None)
 
                 # Persist posts
                 count = await insert_posts(session, generated, news_id=news_id)
