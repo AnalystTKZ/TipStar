@@ -120,8 +120,8 @@ export default function CommandCenter() {
     setPublishing(true)
     setPublishMsg('')
     try {
-      await publishApproved()
-      setPublishMsg('Published to X. Check the History tab.')
+      const r = await publishApproved()
+      setPublishMsg(r.data?.message || 'Published to X. Check the History tab.')
       reloadStats()
     } catch (e) {
       const detail = e?.response?.data?.detail || 'Publish failed - check Twitter credentials.'

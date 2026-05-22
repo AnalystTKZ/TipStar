@@ -100,12 +100,22 @@ def _post_tweet(content: str, image_path: str | None = None) -> tuple[bool, str]
 async def run_publish_pipeline():
     logger.info("=== TipStar publish pipeline starting ===")
     factory = get_session_factory()
+    summary = {
+        "status": "ok",
+        "total": 0,
+        "published": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": [],
+    }
 
     async with factory() as session:
         posts = await get_approved_unposted(session)
+        summary["total"] = len(posts)
         if not posts:
             logger.info("No approved posts to publish.")
-            return
+            summary["message"] = "No approved posts to publish."
+            return summary
 
         for post in posts:
             post_id = post["id"]
@@ -115,6 +125,8 @@ async def run_publish_pipeline():
 
             if not content:
                 logger.warning(f"Post {post_id} is empty -- skipping")
+                summary["skipped"] += 1
+                summary["errors"].append({"post_id": str(post_id), "error": "Post content is empty."})
                 continue
 
             image_path = post.get("image_path")
@@ -132,11 +144,19 @@ async def run_publish_pipeline():
             if success:
                 await update_post_status(session, post_id, "posted")
                 await session.commit()
+                summary["published"] += 1
                 logger.info(f"Posted tweet {result}: {title}")
             else:
+                summary["failed"] += 1
+                summary["errors"].append({"post_id": str(post_id), "error": result})
                 logger.error(f"Failed to post {post_id}: {result}")
 
     logger.info("=== Publish pipeline complete ===")
+    summary["message"] = (
+        f"Publish complete: {summary['published']} posted, "
+        f"{summary['failed']} failed, {summary['skipped']} skipped."
+    )
+    return summary
 
 
 if __name__ == "__main__":

@@ -41,6 +41,9 @@ def generate_posts(
             )
             return None
 
+        if _looks_robotic(result):
+            result = _rewrite_robotic_posts(news_item, enriched_context, raw) or result
+
         result["_llm_provider"] = result_msg.provider
         result["_llm_model"] = result_msg.model
 
@@ -60,6 +63,39 @@ def generate_posts(
 
     except Exception as e:
         logger.error(f"LLM generation failed for '{news_item.get('title')}': {e}")
+        return None
+
+
+def _rewrite_robotic_posts(
+    news_item: dict,
+    enriched_context: dict | None,
+    previous_json: str,
+) -> dict | None:
+    """One cheap retry when the first draft sounds like article copy."""
+    user_prompt = build_user_prompt(news_item, enriched_context)
+    rewrite_prompt = f"""{user_prompt}
+
+The previous draft sounded too generic or journalistic.
+Rewrite it in TipStar's casual informer voice.
+Keep every factual claim grounded in the story and context.
+Use shorter lines, more natural football phrasing, and less article language.
+Return the same strict JSON shape only.
+
+PREVIOUS DRAFT:
+{previous_json[:4000]}"""
+    try:
+        retry_msg = chat_completion(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": rewrite_prompt},
+            ],
+            temperature=0.72,
+            max_tokens=1500,
+            purpose=f"post generation tone rewrite: {news_item.get('title')}",
+        )
+        return _parse_json(retry_msg.content)
+    except Exception as exc:
+        logger.warning("Tone rewrite failed for '%s': %s", news_item.get("title"), exc)
         return None
 
 
@@ -85,6 +121,33 @@ def _parse_json(raw: str) -> dict | None:
             pass
 
     return None
+
+
+def _looks_robotic(result: dict) -> bool:
+    banned = (
+        "it is worth noting",
+        "this highlights",
+        "in the world of football",
+        "fans are buzzing",
+        "only time will tell",
+        "the beautiful game",
+        "a reminder of",
+        "a testament to",
+        "a significant development",
+        "adds another layer",
+        "according to reports",
+        "the player stated",
+        "the manager expressed",
+        "will be hoping",
+    )
+    hits = 0
+    for key in ("post_a", "post_b", "post_c", "post_d"):
+        post = result.get(key)
+        if not post:
+            continue
+        text = f"{post.get('content', '')} {post.get('caption', '')}".lower()
+        hits += sum(1 for phrase in banned if phrase in text)
+    return hits >= 1
 
 
 def _normalise_caption(post: dict) -> str:

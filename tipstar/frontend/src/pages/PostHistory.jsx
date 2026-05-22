@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Copy, Filter } from 'lucide-react'
-import { getPosts } from '../api/client'
+import { Copy, Filter, Send } from 'lucide-react'
+import { getPosts, publishApproved } from '../api/client'
 import { postTypeColors } from '../styles/theme'
 
 function TypeBadge({ type }) {
@@ -105,6 +105,8 @@ export default function PostHistory() {
   const [dateMode, setDateMode]   = useState(searchParams.get('created') === 'today' ? 'created' : 'display')
   const [dateFrom, setDateFrom]   = useState(searchParams.get('created') === 'today' ? todayISO() : '')
   const [dateTo, setDateTo]       = useState(searchParams.get('created') === 'today' ? todayISO() : '')
+  const [publishing, setPublishing] = useState(false)
+  const [publishMsg, setPublishMsg] = useState('')
 
   useEffect(() => {
     const nextStatus = searchParams.get('status') || 'posted'
@@ -116,13 +118,33 @@ export default function PostHistory() {
     setDateTo(createdToday ? todayISO() : '')
   }, [searchParams])
 
-  useEffect(() => {
+  function loadPosts() {
+    setLoading(true)
     const status = statusFilter === 'all' ? '' : statusFilter
     getPosts(status)
       .then(r => setPosts(r.data))
       .catch(() => setPosts([]))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadPosts()
   }, [statusFilter])
+
+  async function handlePublishApproved() {
+    setPublishing(true)
+    setPublishMsg('')
+    try {
+      const r = await publishApproved()
+      const data = r.data || {}
+      setPublishMsg(data.message || `Published ${data.published || 0} approved posts.`)
+      loadPosts()
+    } catch (e) {
+      setPublishMsg(e?.response?.data?.detail || 'Publish failed. Check Twitter credentials and backend logs.')
+    } finally {
+      setPublishing(false)
+    }
+  }
 
   const filtered = posts.filter(p => {
     if (typeFilter && p.post_type !== typeFilter) return false
@@ -133,12 +155,32 @@ export default function PostHistory() {
     return true
   })
 
+  const canPublishFromView = statusFilter === 'approved'
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-primary">Post History</h1>
-        <span className="text-muted text-sm">{filtered.length} posts</span>
+        <div className="flex items-center gap-3">
+          {canPublishFromView && (
+            <button
+              onClick={handlePublishApproved}
+              disabled={publishing || !filtered.length}
+              className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"
+              title="Post all approved, unposted items to X"
+            >
+              <Send size={14} className={publishing ? 'animate-pulse' : ''} />
+              {publishing ? 'Posting...' : 'Post approved'}
+            </button>
+          )}
+          <span className="text-muted text-sm">{filtered.length} posts</span>
+        </div>
       </div>
+      {publishMsg && (
+        <div className="card mb-4 border-primary/60 bg-primary/5">
+          <p className="text-sm text-white">{publishMsg}</p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card mb-6">

@@ -306,7 +306,6 @@ async def publish_approved():
     """
     from backend.scheduler.publisher import run_publish_pipeline
     try:
-        await run_publish_pipeline()
-        return {"status": "ok", "message": "Publish pipeline complete - check logs for details."}
+        return await run_publish_pipeline()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
