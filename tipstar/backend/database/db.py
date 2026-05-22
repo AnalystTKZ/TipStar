@@ -114,6 +114,7 @@ async def _ensure_runtime_schema(conn) -> None:
         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS source_name VARCHAR(200)",
         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS published_at VARCHAR(100)",
         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_path VARCHAR(500)",
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS caption TEXT",
         "ALTER TABLE news ADD COLUMN IF NOT EXISTS source_confidence VARCHAR(50) DEFAULT 'trusted_news'",
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS world_cup_squad BOOLEAN DEFAULT false",
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS market_value VARCHAR(50)",
@@ -278,6 +279,7 @@ async def insert_posts(session: AsyncSession, generated: dict, news_id=None) -> 
         content = (post_data.get("content") or "").strip()
         if not content:
             continue
+        caption = (post_data.get("caption") or "").strip()
         hashtags_raw = post_data.get("hashtags", [])
         hashtags = ", ".join(hashtags_raw) if isinstance(hashtags_raw, list) else (hashtags_raw or "")
         emb = post_data.get("embedding")
@@ -288,6 +290,7 @@ async def insert_posts(session: AsyncSession, generated: dict, news_id=None) -> 
             is_world_cup=is_world_cup,
             post_type=post_type,
             content=content,
+            caption=caption or _build_caption_fallback(content, hashtags),
             hashtags=hashtags,
             best_time=post_data.get("best_time", ""),
             status=PostStatus.pending,
@@ -301,6 +304,22 @@ async def insert_posts(session: AsyncSession, generated: dict, news_id=None) -> 
     await session.flush()
     logger.info(f"Inserted {len(rows)} posts for: {story_title}")
     return len(rows)
+
+
+def _build_caption_fallback(content: str, hashtags: str) -> str:
+    text = content.strip()
+    if len(text) > 210:
+        text = text[:207].rstrip() + "..."
+    tags = " ".join(t if t.startswith("#") else f"#{t}" for t in re_split_tags(hashtags))
+    caption = f"{text}\n\n{tags}".strip()
+    if len(caption) > 280:
+        caption = caption[:277].rstrip() + "..."
+    return caption
+
+
+def re_split_tags(raw: str) -> list[str]:
+    import re
+    return [t.strip().lstrip("#") for t in re.split(r"[,\s]+", raw or "") if t.strip()]
 
 
 async def get_posts_by_status(session: AsyncSession, status: str) -> list[dict]:
@@ -333,6 +352,7 @@ async def update_post_status(
     post_id: str,
     status: str,
     content: Optional[str] = None,
+    caption: Optional[str] = None,
 ) -> Optional[dict]:
     result = await session.execute(select(Post).where(Post.id == int(post_id)))
     post = result.scalar_one_or_none()
@@ -341,6 +361,8 @@ async def update_post_status(
     post.status = PostStatus(status)
     if content is not None:
         post.content = content
+    if caption is not None:
+        post.caption = caption
     if status == "posted":
         post.posted_at = datetime.utcnow()
     await session.flush()

@@ -38,6 +38,12 @@ function CharCount({ content }) {
   )
 }
 
+function CaptionCount({ content }) {
+  const len = (content || '').length
+  const color = len > 280 ? '#EF4444' : len > 250 ? '#F59E0B' : '#6b7280'
+  return <span className="text-xs tabular-nums" style={{ color }}>{len}/280</span>
+}
+
 function HashtagChips({ raw }) {
   if (!raw) return null
   const tags = raw.split(/[,\s]+/).filter(Boolean).map(t => t.startsWith('#') ? t : `#${t}`)
@@ -53,6 +59,7 @@ function HashtagChips({ raw }) {
 function PostCard({ post, onAction }) {
   const [editing, setEditing]       = useState(false)
   const [editContent, setEditContent] = useState(post.content)
+  const [editCaption, setEditCaption] = useState(post.caption || '')
   const [loading, setLoading]       = useState(false)
   const [confirming, setConfirming] = useState(false)
 
@@ -75,11 +82,11 @@ function PostCard({ post, onAction }) {
 
   const handleEditApprove = () => act(async () => {
     if (!editing) { setEditing(true); setLoading(false); return }
-    await editPost(post.id, editContent)
+    await editPost(post.id, editContent, editCaption)
     onAction?.()
   })
 
-  const handleCopy = () => navigator.clipboard.writeText(post.content)
+  const handleCopy = () => navigator.clipboard.writeText(post.caption || post.content)
 
   return (
     <div className="bg-card border border-border rounded-xl p-4 hover:border-primary/50 transition-colors">
@@ -91,20 +98,46 @@ function PostCard({ post, onAction }) {
       </div>
 
       {editing ? (
-        <div className="relative">
-          <textarea
-            className="w-full bg-surface border border-border rounded-lg p-3 text-sm text-white resize-none focus:border-primary outline-none"
-            rows={4}
-            value={editContent}
-            onChange={e => setEditContent(e.target.value)}
-            autoFocus
-          />
-          <div className="absolute bottom-2 right-3">
-            <CharCount content={editContent} />
+        <div className="space-y-3">
+          <div className="relative">
+            <textarea
+              className="w-full bg-surface border border-border rounded-lg p-3 text-sm text-white resize-none focus:border-primary outline-none"
+              rows={4}
+              value={editContent}
+              onChange={e => setEditContent(e.target.value)}
+              autoFocus
+            />
+            <div className="absolute bottom-2 right-3">
+              <CharCount content={editContent} />
+            </div>
+          </div>
+          <div className="relative">
+            <textarea
+              className="w-full bg-secondary border border-border rounded-lg p-3 text-sm text-white resize-none focus:border-primary outline-none"
+              rows={3}
+              value={editCaption}
+              onChange={e => setEditCaption(e.target.value)}
+              placeholder="X caption"
+            />
+            <div className="absolute bottom-2 right-3">
+              <CaptionCount content={editCaption} />
+            </div>
           </div>
         </div>
       ) : (
-        <p className="text-sm leading-relaxed text-white whitespace-pre-wrap">{post.content}</p>
+        <div className="space-y-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted mb-1">Template text</p>
+            <p className="text-sm leading-relaxed text-white whitespace-pre-wrap">{post.content}</p>
+          </div>
+          <div className="border border-border rounded-lg bg-secondary/60 p-3">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <p className="text-[10px] uppercase tracking-wider text-primary">X caption</p>
+              <CaptionCount content={post.caption || post.content} />
+            </div>
+            <p className="text-sm leading-relaxed text-white whitespace-pre-wrap">{post.caption || post.content}</p>
+          </div>
+        </div>
       )}
 
       <HashtagChips raw={post.hashtags} />
@@ -135,7 +168,7 @@ function PostCard({ post, onAction }) {
           <Edit2 size={14} /> {editing ? 'Save & Approve' : 'Edit'}
         </button>
         {editing && (
-          <button onClick={() => { setEditing(false); setEditContent(post.content) }}
+          <button onClick={() => { setEditing(false); setEditContent(post.content); setEditCaption(post.caption || '') }}
             className="btn-ghost text-sm py-1.5">Cancel</button>
         )}
         <div className="ml-auto flex items-center gap-2">

@@ -103,6 +103,7 @@ class Post(Base):
         nullable=False,
     )
     content = Column(Text, nullable=False)
+    caption = Column(Text)
     hashtags = Column(String(500))
     best_time = Column(String(200))
     source_url = Column(String(500))
@@ -129,6 +130,7 @@ class Post(Base):
             "is_world_cup": self.is_world_cup,
             "post_type": self.post_type.value if isinstance(self.post_type, PostType) else self.post_type,
             "content": self.content,
+            "caption": self.caption,
             "hashtags": self.hashtags,
             "best_time": self.best_time,
             "source_url": self.source_url,

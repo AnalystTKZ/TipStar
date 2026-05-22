@@ -27,6 +27,7 @@ _generation_jobs: dict[str, dict] = {}
 
 class EditBody(BaseModel):
     content: str
+    caption: Optional[str] = None
 
 
 def _set_job(job_id: str, **updates) -> None:
@@ -123,7 +124,7 @@ async def edit_and_approve(post_id: str, body: EditBody, db: AsyncSession = Depe
     """Edit post content and approve in one step."""
     if not body.content.strip():
         raise HTTPException(status_code=400, detail="Content cannot be empty")
-    result = await update_post_status(db, post_id, "approved", content=body.content)
+    result = await update_post_status(db, post_id, "approved", content=body.content, caption=body.caption)
     if not result:
         raise HTTPException(status_code=404, detail="Post not found")
     result = await _render_visual_for_post(db, result)

@@ -40,6 +40,7 @@ function HashtagChips({ raw }) {
 export default function PostCard({ post, onAction }) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(post.content)
+  const [editCaption, setEditCaption] = useState(post.caption || '')
   const [loading, setLoading] = useState(false)
 
   async function handleApprove() {
@@ -62,13 +63,13 @@ export default function PostCard({ post, onAction }) {
     if (!editing) { setEditing(true); return }
     setLoading(true)
     try {
-      await editPost(post.id, editContent)
+      await editPost(post.id, editContent, editCaption)
       onAction?.()
     } finally { setLoading(false) }
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(post.content)
+    navigator.clipboard.writeText(post.caption || post.content)
   }
 
   return (
@@ -88,14 +89,29 @@ export default function PostCard({ post, onAction }) {
 
       {/* Content */}
       {editing ? (
-        <textarea
-          className="w-full bg-surface border border-border rounded-lg p-3 text-sm text-white resize-none focus:border-primary outline-none"
-          rows={4}
-          value={editContent}
-          onChange={e => setEditContent(e.target.value)}
-        />
+        <div className="space-y-3">
+          <textarea
+            className="w-full bg-surface border border-border rounded-lg p-3 text-sm text-white resize-none focus:border-primary outline-none"
+            rows={4}
+            value={editContent}
+            onChange={e => setEditContent(e.target.value)}
+          />
+          <textarea
+            className="w-full bg-secondary border border-border rounded-lg p-3 text-sm text-white resize-none focus:border-primary outline-none"
+            rows={3}
+            value={editCaption}
+            onChange={e => setEditCaption(e.target.value)}
+            placeholder="X caption"
+          />
+        </div>
       ) : (
-        <p className="text-sm leading-relaxed text-white whitespace-pre-wrap">{post.content}</p>
+        <div className="space-y-3">
+          <p className="text-sm leading-relaxed text-white whitespace-pre-wrap">{post.content}</p>
+          <div className="border border-border rounded-lg bg-secondary/60 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-primary mb-1">X caption</p>
+            <p className="text-sm leading-relaxed text-white whitespace-pre-wrap">{post.caption || post.content}</p>
+          </div>
+        </div>
       )}
 
       <HashtagChips raw={post.hashtags} />
@@ -136,7 +152,7 @@ export default function PostCard({ post, onAction }) {
           <Edit2 size={14} /> {editing ? 'Save & Approve' : 'Edit'}
         </button>
         {editing && (
-          <button onClick={() => setEditing(false)} className="btn-ghost text-sm py-1.5">
+          <button onClick={() => { setEditing(false); setEditContent(post.content); setEditCaption(post.caption || '') }} className="btn-ghost text-sm py-1.5">
             Cancel
           </button>
         )}

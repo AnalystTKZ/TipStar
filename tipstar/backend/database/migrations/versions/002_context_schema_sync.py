@@ -17,6 +17,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS source_name VARCHAR(200)")
     op.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS published_at VARCHAR(100)")
     op.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_path VARCHAR(500)")
+    op.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS caption TEXT")
     op.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS source_confidence VARCHAR(50) DEFAULT 'trusted_news'")
 
     op.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS world_cup_squad BOOLEAN DEFAULT false")
@@ -123,6 +124,7 @@ def downgrade() -> None:
     op.execute("ALTER TABLE players DROP COLUMN IF EXISTS market_value")
     op.execute("ALTER TABLE players DROP COLUMN IF EXISTS world_cup_squad")
     op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS image_path")
+    op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS caption")
     op.execute("ALTER TABLE news DROP COLUMN IF EXISTS source_confidence")
     op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS published_at")
     op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS source_name")

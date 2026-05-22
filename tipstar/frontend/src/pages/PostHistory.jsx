@@ -20,7 +20,7 @@ function HistoryEntry({ post }) {
   const [copied, setCopied] = useState(false)
 
   function copy() {
-    navigator.clipboard.writeText(post.content)
+    navigator.clipboard.writeText(post.caption || post.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -41,6 +41,10 @@ function HistoryEntry({ post }) {
       </div>
       <p className="text-xs text-muted mb-2 line-clamp-1">{post.story_title}</p>
       <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">{post.content}</p>
+      <div className="border border-border rounded-lg bg-secondary/60 p-3 mt-3">
+        <p className="text-[10px] uppercase tracking-wider text-primary mb-1">X caption</p>
+        <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">{post.caption || post.content}</p>
+      </div>
       {post.hashtags && (
         <div className="flex flex-wrap gap-1 mt-2">
           {post.hashtags.split(/[,\s]+/).filter(Boolean).map(t => (

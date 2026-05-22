@@ -110,6 +110,7 @@ async def run_publish_pipeline():
         for post in posts:
             post_id = post["id"]
             content = (post.get("content") or "").strip()
+            caption = (post.get("caption") or "").strip()
             title = post.get("story_title", "")
 
             if not content:
@@ -126,7 +127,8 @@ async def run_publish_pipeline():
                 except Exception as exc:
                     logger.warning("Could not render image for post %s before publish: %s", post_id, exc)
 
-            success, result = _post_tweet(content, image_path=image_path)
+            tweet_text = caption or content
+            success, result = _post_tweet(tweet_text, image_path=image_path)
             if success:
                 await update_post_status(session, post_id, "posted")
                 await session.commit()

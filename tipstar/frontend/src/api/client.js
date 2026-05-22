@@ -13,7 +13,7 @@ export const getPosts         = (status = '') => api.get('/posts', { params: sta
 export const getPostHistory   = () => api.get('/posts/history')
 export const approvePost      = (id) => api.patch(`/posts/${id}/approve`)
 export const rejectPost       = (id) => api.patch(`/posts/${id}/reject`)
-export const editPost         = (id, content) => api.patch(`/posts/${id}/edit`, { content })
+export const editPost         = (id, content, caption = null) => api.patch(`/posts/${id}/edit`, { content, caption })
 export const deletePost       = (id) => api.delete(`/posts/${id}`)
 export const generatePosts    = (limit = 20, minScore = 5) => api.post('/posts/generate', null, { params: { limit, min_score: minScore } })
 export const getGenerationStatus = (jobId) => api.get(`/posts/generate/status/${jobId}`)

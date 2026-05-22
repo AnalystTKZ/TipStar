@@ -128,6 +128,15 @@ Only process stories scoring 5 and above.
 
 POST OPTIONS
 
+For every post option:
+- content = the main text that appears on the image template.
+- caption = the X post text that accompanies the image.
+- The caption must not simply duplicate content. It should add one useful hook,
+  context line, question, or visibility-friendly angle.
+- Caption must include useful hashtags naturally.
+- Caption must stay under 260 characters.
+- Content should be short enough to look clean on a square/portrait template.
+
 post_a - Reporter Lead
 The cleanest news-desk version. Lead with the update, then one human context line.
 Under 220 characters.
@@ -168,10 +177,10 @@ OUTPUT FORMAT - strict JSON only
   "story_title": "",
   "relevance_score": 0,
   "is_world_cup": true,
-  "post_a": { "type": "Reporter Lead",         "content": "", "hashtags": [], "best_time": "" },
-  "post_b": { "type": "Detail and Context",    "content": "", "hashtags": [], "best_time": "" },
-  "post_c": { "type": "Human Angle",           "content": "", "hashtags": [], "best_time": "" },
-  "post_d": { "type": "World Cup Angle",       "content": "", "hashtags": [], "best_time": "" }
+  "post_a": { "type": "Reporter Lead",         "content": "", "caption": "", "hashtags": [], "best_time": "" },
+  "post_b": { "type": "Detail and Context",    "content": "", "caption": "", "hashtags": [], "best_time": "" },
+  "post_c": { "type": "Human Angle",           "content": "", "caption": "", "hashtags": [], "best_time": "" },
+  "post_d": { "type": "World Cup Angle",       "content": "", "caption": "", "hashtags": [], "best_time": "" }
 }
 post_d is null if is_world_cup is false."""
 
