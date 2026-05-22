@@ -6,7 +6,7 @@ load_dotenv()
 # --- API Keys ---
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # --- Twitter / X ---
 TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
@@ -37,21 +37,37 @@ FOOTBALL_DATA_KEY = os.getenv("FOOTBALL_DATA_KEY")
 # --- Frontend ---
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
-# --- Harvester ---
+# --- Harvester sources ---
+GUARDIAN_API_KEY = os.getenv("GUARDIAN_API_KEY")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+
 NEWSAPI_FOOTBALL_QUERY = (
-    "football OR soccer OR FIFA OR 'World Cup' OR 'Premier League' "
-    "OR 'Champions League' OR Haaland OR Messi OR Ronaldo OR Mbappe"
+    "'Manchester City' OR 'Man City' OR Guardiola OR Haaland OR Foden OR De Bruyne "
+    "OR Rodri OR 'Etihad' OR Messi OR 'Lionel Messi' OR Argentina OR 'Inter Miami' "
+    "OR football OR soccer OR FIFA OR 'World Cup' OR 'Premier League' OR 'Champions League' "
+    "OR 'press conference' OR interview OR 'match preview' OR 'match build-up' "
+    "OR lineup OR injury OR 'team news' OR transfer OR bid OR talks OR medical "
+    "OR rumour OR rumor OR confirmed OR Ronaldo OR Mbappe"
 )
 NEWSAPI_PAGE_SIZE = 30
 NEWSAPI_LANGUAGE = "en"
 
-RSS_FEEDS = [
+# Official / club sources - highest trust for team news, injuries, statements
+RSS_FEEDS_OFFICIAL = [
     "https://www.mancity.com/rss",
     "https://www.uefa.com/rssfeed/newsrss.xml",
     "https://www.fifa.com/rss.xml",
+]
+
+# Trusted news publishers - good for transfer news, match reports, interviews
+RSS_FEEDS_TRUSTED = [
+    "https://feeds.bbci.co.uk/sport/football/rss.xml",
     "https://feeds.skysports.com/skysports/football/news",
     "https://www.espn.com/espn/rss/soccer/news",
 ]
+
+# All RSS feeds combined (used by rss_harvester)
+RSS_FEEDS = RSS_FEEDS_OFFICIAL + RSS_FEEDS_TRUSTED
 
 # --- Relevance threshold ---
 MIN_RELEVANCE_SCORE = 5

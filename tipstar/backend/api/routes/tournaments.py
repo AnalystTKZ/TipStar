@@ -24,7 +24,8 @@ async def import_tournaments_from_notion(db: AsyncSession = Depends(get_db)):
     for t in tournaments:
         try:
             data = {k: v for k, v in t.items() if k != "_notion_page_id" and v is not None}
-            await upsert_tournament(db, data)
+            async with db.begin_nested():
+                await upsert_tournament(db, data)
             imported += 1
         except Exception:
             errors += 1
@@ -36,7 +37,7 @@ async def import_tournaments_from_notion(db: AsyncSession = Depends(get_db)):
 async def sync_all_tournaments():
     from backend.sync.tournament_sync import sync_tournaments
     asyncio.create_task(sync_tournaments())
-    return {"status": "started", "message": "Tournament sync running in background — check back in ~30 seconds."}
+    return {"status": "started", "message": "Tournament sync running in background - check back in ~30 seconds."}
 
 
 @router.delete("/{tournament_id}", status_code=200)

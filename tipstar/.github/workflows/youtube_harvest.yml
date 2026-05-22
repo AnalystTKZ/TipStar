@@ -1,0 +1,31 @@
+name: TipStar YouTube Intelligence Harvest
+
+on:
+  schedule:
+    - cron: "0 6-23/2 * * *"
+    - cron: "0 * 11-30 6 *"
+    - cron: "0 * 1-19 7 *"
+  workflow_dispatch:
+
+jobs:
+  youtube-harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run YouTube intelligence harvest
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python -m backend.scheduler.orchestrator youtube --scheduled

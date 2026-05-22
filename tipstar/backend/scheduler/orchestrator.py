@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import date, datetime, time as dt_time, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -15,9 +16,11 @@ from backend.embeddings.enricher import enrich_story
 from backend.generator.groq_generator import generate_posts
 from backend.harvester.harvest import harvest_all
 from backend.harvester.notion_harvester import (
-    fetch_players, fetch_teams, fetch_drama, fetch_config,
+    fetch_config,
     write_back_from_story,
 )
+from backend.harvester.notion_sync import sync_notion_knowledge
+from backend.sync.sync_logger import log_sync_run
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,30 +35,9 @@ logger = logging.getLogger("orchestrator")
 
 async def sync_notion(session):
     """Sync Notion knowledge base into Supabase."""
-    from backend.database.db import upsert_player, upsert_team, insert_drama
-    from backend.embeddings.miniLM import encode
-
     logger.info("Syncing Notion knowledge base...")
-
-    players = fetch_players()
-    for p in players:
-        p["embedding"] = encode(f"{p['name']} {p.get('current_club','')} {p.get('position','')}")
-        await upsert_player(session, p)
-    logger.info(f"Synced {len(players)} players from Notion")
-
-    teams = fetch_teams()
-    for t in teams:
-        t["embedding"] = encode(f"{t['name']} {t.get('league','')} {t.get('playing_style','')}")
-        await upsert_team(session, t)
-    logger.info(f"Synced {len(teams)} teams from Notion")
-
-    drama_items = fetch_drama()
-    for d in drama_items:
-        d["embedding"] = encode(f"{d['title']} {d.get('summary','')}")
-        await insert_drama(session, d)
-    logger.info(f"Synced {len(drama_items)} drama entries from Notion")
-
-    await session.commit()
+    results = await sync_notion_knowledge(session, with_embeddings=True)
+    logger.info("Notion sync complete: %s", results)
 
 
 async def run_harvest_pipeline():
@@ -120,5 +102,76 @@ async def run_harvest_pipeline():
     logger.info(f"=== Pipeline complete: {pushed} stories, {skipped} skipped ===")
 
 
+async def run_youtube_harvest(hours: int = 6) -> dict:
+    """Harvest YouTube videos, extract transcripts, and store quote/opinion intelligence."""
+    logger.info("=== TipStar YouTube intelligence harvest starting ===")
+    await init_db()
+
+    from backend.harvester.opinion_extractor import extract_opinions
+    from backend.harvester.pressconf_extractor import extract_quotes
+    from backend.harvester.transcript_extractor import get_transcript
+    from backend.harvester.youtube_harvester import get_video_comments, run_harvester
+
+    factory = get_session_factory()
+    videos = await run_harvester(hours=hours)
+    quotes_count = 0
+    opinions_count = 0
+    errors = 0
+
+    async with factory() as session:
+        for video in videos:
+            try:
+                transcript = get_transcript(video["video_id"])
+                if not transcript:
+                    errors += 1
+                    continue
+
+                comments = get_video_comments(video["video_id"])
+                if video.get("channel_type") == "press_conf":
+                    quotes = await extract_quotes(session, transcript, video, comments)
+                    quotes_count += len(quotes)
+                else:
+                    opinions = await extract_opinions(session, transcript, video, comments)
+                    opinions_count += len(opinions)
+                await session.commit()
+            except Exception as exc:
+                await session.rollback()
+                errors += 1
+                logger.error("YouTube processing failed for %s: %s", video.get("title"), exc)
+
+        total = quotes_count + opinions_count
+        await log_sync_run(
+            sync_type="youtube_harvest",
+            api_used="youtube+groq",
+            records_updated=total,
+            errors=errors,
+            notes=f"videos={len(videos)} quotes={quotes_count} opinions={opinions_count}",
+        )
+
+    result = {
+        "videos": len(videos),
+        "quotes": quotes_count,
+        "opinions": opinions_count,
+        "errors": errors,
+    }
+    logger.info("=== YouTube intelligence harvest complete: %s ===", result)
+    return result
+
+
+def should_run_youtube_harvest_now() -> bool:
+    """Regular cadence is 6am to midnight UTC, World Cup cadence is 24 hours."""
+    today = datetime.now(timezone.utc).date()
+    if date(2026, 6, 11) <= today <= date(2026, 7, 19):
+        return True
+    now = datetime.now(timezone.utc).time()
+    return dt_time(6, 0) <= now <= dt_time(23, 59)
+
+
 if __name__ == "__main__":
-    asyncio.run(run_harvest_pipeline())
+    if len(sys.argv) > 1 and sys.argv[1] == "youtube":
+        if "--scheduled" in sys.argv and not should_run_youtube_harvest_now():
+            logger.info("Outside YouTube harvest window, skipping.")
+        else:
+            asyncio.run(run_youtube_harvest())
+    else:
+        asyncio.run(run_harvest_pipeline())

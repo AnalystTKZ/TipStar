@@ -43,7 +43,7 @@ def generate_posts(
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.85,
+            temperature=0.62,
             max_tokens=1500,
         )
         raw = response.choices[0].message.content.strip()

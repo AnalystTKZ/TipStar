@@ -61,6 +61,7 @@ class News(Base):
     title = Column(Text, nullable=False)
     content = Column(Text)
     source = Column(String(200))
+    source_confidence = Column(String(50), default="trusted_news")
     url = Column(Text, unique=True)
     published_at = Column(DateTime)
     relevance_score = Column(Integer)
@@ -76,6 +77,7 @@ class News(Base):
             "title": self.title,
             "content": self.content,
             "source": self.source,
+            "source_confidence": self.source_confidence,
             "url": self.url,
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "relevance_score": self.relevance_score,
@@ -106,6 +108,7 @@ class Post(Base):
     source_url = Column(String(500))
     source_name = Column(String(200))
     published_at = Column(String(100))
+    image_path = Column(String(500))
     status = Column(
         Enum(PostStatus, name="post_status_enum", create_constraint=False),
         default=PostStatus.pending,
@@ -128,6 +131,11 @@ class Post(Base):
             "content": self.content,
             "hashtags": self.hashtags,
             "best_time": self.best_time,
+            "source_url": self.source_url,
+            "source_name": self.source_name,
+            "published_at": self.published_at,
+            "image_path": self.image_path,
+            "image_url": f"/{self.image_path}" if self.image_path else None,
             "status": self.status.value if isinstance(self.status, PostStatus) else self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "posted_at": self.posted_at.isoformat() if self.posted_at else None,
@@ -343,5 +351,81 @@ class Drama(Base):
             "status": self.status,
             "source": self.source,
             "drama_date": self.drama_date.isoformat() if self.drama_date else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ---------------------------------------------------------------------------
+# YouTube Intelligence
+# ---------------------------------------------------------------------------
+
+class Opinion(Base):
+    __tablename__ = "opinions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_channel = Column(Text)
+    video_title = Column(Text)
+    video_id = Column(Text, index=True)
+    opinion_text = Column(Text, nullable=False)
+    original_speaker = Column(String(200))
+    stance = Column(String(50))
+    controversy_score = Column(Integer)
+    topic_tags = Column(Text)
+    players_mentioned = Column(Text)
+    top_comments = Column(Text)
+    embedding = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "source_channel": self.source_channel,
+            "video_title": self.video_title,
+            "video_id": self.video_id,
+            "opinion_text": self.opinion_text,
+            "original_speaker": self.original_speaker,
+            "stance": self.stance,
+            "controversy_score": self.controversy_score,
+            "topic_tags": self.topic_tags,
+            "players_mentioned": self.players_mentioned,
+            "top_comments": self.top_comments,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class PressConference(Base):
+    __tablename__ = "press_conferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_channel = Column(Text)
+    video_title = Column(Text)
+    video_id = Column(Text, index=True)
+    speaker = Column(String(200))
+    speaker_role = Column(String(100))
+    club_or_nation = Column(String(200))
+    exact_quote = Column(Text, nullable=False)
+    quote_category = Column(String(100))
+    controversy_score = Column(Integer)
+    top_comments = Column(Text)
+    match_context = Column(Text)
+    tournament = Column(String(200))
+    embedding = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "source_channel": self.source_channel,
+            "video_title": self.video_title,
+            "video_id": self.video_id,
+            "speaker": self.speaker,
+            "speaker_role": self.speaker_role,
+            "club_or_nation": self.club_or_nation,
+            "exact_quote": self.exact_quote,
+            "quote_category": self.quote_category,
+            "controversy_score": self.controversy_score,
+            "top_comments": self.top_comments,
+            "match_context": self.match_context,
+            "tournament": self.tournament,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

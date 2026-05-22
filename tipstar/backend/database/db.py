@@ -5,13 +5,27 @@ Uses asyncpg driver for async I/O compatible with FastAPI.
 import json
 import logging
 import os
+from email.utils import parsedate_to_datetime
 from datetime import datetime, date
 from typing import Optional
 
-from sqlalchemy import func, and_, select, update, delete
+from sqlalchemy import func, and_, select, update, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from backend.database.models import Base, News, Post, Player, Team, Match, Drama, Tournament, PostStatus, PostType
+from backend.database.models import (
+    Base,
+    Drama,
+    Match,
+    News,
+    Opinion,
+    Player,
+    Post,
+    PostStatus,
+    PostType,
+    PressConference,
+    Team,
+    Tournament,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +92,96 @@ async def get_db():
 
 
 async def init_db():
-    """Create all tables (run once at startup or in migrations)."""
+    """Create all tables and apply additive schema fixes."""
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_runtime_schema(conn)
     logger.info("Database tables initialised")
+
+
+async def _ensure_runtime_schema(conn) -> None:
+    """
+    Supabase already has production tables, and create_all() will not add new
+    columns to them. Keep this additive only: no drops, rewrites, or type
+    changes that could damage existing data.
+    """
+    statements = [
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS source_url VARCHAR(500)",
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS source_name VARCHAR(200)",
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS published_at VARCHAR(100)",
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_path VARCHAR(500)",
+        "ALTER TABLE news ADD COLUMN IF NOT EXISTS source_confidence VARCHAR(50) DEFAULT 'trusted_news'",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS world_cup_squad BOOLEAN DEFAULT false",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS market_value VARCHAR(50)",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS instagram_followers VARCHAR(50)",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS content_angle TEXT",
+        """
+        CREATE TABLE IF NOT EXISTS tournaments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name TEXT NOT NULL UNIQUE,
+            type VARCHAR(100),
+            status VARCHAR(50),
+            host_country VARCHAR(200),
+            start_date DATE,
+            end_date DATE,
+            total_teams INTEGER,
+            total_matches INTEGER,
+            matches_played INTEGER,
+            current_stage VARCHAR(100),
+            defending_champion VARCHAR(200),
+            current_leader VARCHAR(200),
+            favourite_to_win VARCHAR(200),
+            top_scorer VARCHAR(200),
+            key_teams TEXT,
+            key_players TEXT,
+            coverage_priority VARCHAR(50),
+            content_angles TEXT,
+            notes TEXT,
+            updated_at TIMESTAMP DEFAULT now()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS opinions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            source_channel TEXT,
+            video_title TEXT,
+            video_id TEXT,
+            opinion_text TEXT NOT NULL,
+            original_speaker VARCHAR(200),
+            stance VARCHAR(50),
+            controversy_score INTEGER,
+            topic_tags TEXT,
+            players_mentioned TEXT,
+            top_comments TEXT,
+            embedding TEXT,
+            created_at TIMESTAMP DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_opinions_video_id ON opinions(video_id)",
+        """
+        CREATE TABLE IF NOT EXISTS press_conferences (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            source_channel TEXT,
+            video_title TEXT,
+            video_id TEXT,
+            speaker VARCHAR(200),
+            speaker_role VARCHAR(100),
+            club_or_nation VARCHAR(200),
+            exact_quote TEXT NOT NULL,
+            quote_category VARCHAR(100),
+            controversy_score INTEGER,
+            top_comments TEXT,
+            match_context TEXT,
+            tournament VARCHAR(200),
+            embedding TEXT,
+            created_at TIMESTAMP DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_press_conferences_video_id ON press_conferences(video_id)",
+    ]
+    for statement in statements:
+        await conn.execute(text(statement))
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +198,7 @@ async def insert_news(session: AsyncSession, item: dict) -> Optional[News]:
         title=item.get("title", ""),
         content=item.get("description", ""),
         source=item.get("source", ""),
+        source_confidence=item.get("source_confidence", "trusted_news"),
         url=item.get("url"),
         published_at=_parse_dt(item.get("published_at")),
         relevance_score=item.get("relevance_score"),
@@ -175,6 +275,15 @@ async def get_posts_by_status(session: AsyncSession, status: str) -> list[dict]:
     return [r.to_dict() for r in result.scalars().all()]
 
 
+async def get_posts(session: AsyncSession, status: Optional[str] = None) -> list[dict]:
+    query = select(Post)
+    if status:
+        query = query.where(Post.status == PostStatus(status))
+    query = query.order_by(Post.created_at.desc())
+    result = await session.execute(query)
+    return [r.to_dict() for r in result.scalars().all()]
+
+
 async def get_post_history(session: AsyncSession) -> list[dict]:
     result = await session.execute(
         select(Post).where(Post.status == PostStatus.posted).order_by(Post.posted_at.desc())
@@ -197,6 +306,16 @@ async def update_post_status(
         post.content = content
     if status == "posted":
         post.posted_at = datetime.utcnow()
+    await session.flush()
+    return post.to_dict()
+
+
+async def set_post_image_path(session: AsyncSession, post_id: str, image_path: str) -> Optional[dict]:
+    result = await session.execute(select(Post).where(Post.id == int(post_id)))
+    post = result.scalar_one_or_none()
+    if not post:
+        return None
+    post.image_path = image_path
     await session.flush()
     return post.to_dict()
 
@@ -424,6 +543,27 @@ async def insert_drama(session: AsyncSession, data: dict) -> Drama:
     return drama
 
 
+async def upsert_drama(session: AsyncSession, data: dict) -> Drama:
+    """Insert or update a drama row by title."""
+    result = await session.execute(select(Drama).where(Drama.title == data.get("title")))
+    drama = result.scalar_one_or_none()
+    if not drama:
+        drama = Drama()
+        session.add(drama)
+    for field in [
+        "title", "players_involved", "teams_involved", "category",
+        "severity", "summary", "status", "source",
+    ]:
+        if field in data:
+            setattr(drama, field, data[field])
+    if "drama_date" in data:
+        drama.drama_date = _parse_date(data.get("drama_date"))
+    if data.get("embedding"):
+        drama.embedding = json.dumps(data["embedding"])
+    await session.flush()
+    return drama
+
+
 async def get_all_drama(session: AsyncSession) -> list[dict]:
     result = await session.execute(select(Drama).order_by(Drama.created_at.desc()))
     return [r.to_dict() for r in result.scalars().all()]
@@ -432,6 +572,60 @@ async def get_all_drama(session: AsyncSession) -> list[dict]:
 async def get_drama_by_id(session: AsyncSession, drama_id: str) -> Optional[dict]:
     result = await session.get(Drama, drama_id)
     return result.to_dict() if result else None
+
+
+# ---------------------------------------------------------------------------
+# YouTube Intelligence
+# ---------------------------------------------------------------------------
+
+async def youtube_video_exists(session: AsyncSession, video_id: str) -> bool:
+    opinion_count = await session.scalar(
+        select(func.count(Opinion.id)).where(Opinion.video_id == video_id)
+    )
+    quote_count = await session.scalar(
+        select(func.count(PressConference.id)).where(PressConference.video_id == video_id)
+    )
+    return bool((opinion_count or 0) + (quote_count or 0))
+
+
+async def insert_opinion(session: AsyncSession, data: dict) -> Opinion:
+    opinion = Opinion(
+        source_channel=data.get("source_channel"),
+        video_title=data.get("video_title"),
+        video_id=data.get("video_id"),
+        opinion_text=data.get("opinion_text", ""),
+        original_speaker=data.get("original_speaker"),
+        stance=data.get("stance"),
+        controversy_score=data.get("controversy_score"),
+        topic_tags=data.get("topic_tags"),
+        players_mentioned=data.get("players_mentioned"),
+        top_comments=json.dumps(data.get("top_comments", []), ensure_ascii=False),
+        embedding=json.dumps(data.get("embedding")) if data.get("embedding") else None,
+    )
+    session.add(opinion)
+    await session.flush()
+    return opinion
+
+
+async def insert_press_conference_quote(session: AsyncSession, data: dict) -> PressConference:
+    quote = PressConference(
+        source_channel=data.get("source_channel"),
+        video_title=data.get("video_title"),
+        video_id=data.get("video_id"),
+        speaker=data.get("speaker"),
+        speaker_role=data.get("speaker_role"),
+        club_or_nation=data.get("club_or_nation"),
+        exact_quote=data.get("exact_quote", ""),
+        quote_category=data.get("quote_category"),
+        controversy_score=data.get("controversy_score"),
+        top_comments=json.dumps(data.get("top_comments", []), ensure_ascii=False),
+        match_context=data.get("match_context"),
+        tournament=data.get("tournament"),
+        embedding=json.dumps(data.get("embedding")) if data.get("embedding") else None,
+    )
+    session.add(quote)
+    await session.flush()
+    return quote
 
 
 # ---------------------------------------------------------------------------
@@ -508,6 +702,10 @@ def _parse_dt(value) -> Optional[datetime]:
         return value
     try:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        pass
+    try:
+        return parsedate_to_datetime(str(value))
     except Exception:
         return None
 

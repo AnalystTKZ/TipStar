@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dt_time, timezone
 
 from sqlalchemy import text
 
@@ -22,6 +22,7 @@ from backend.database.db import get_session_factory, init_db
 from backend.sync.player_sync import sync_players
 from backend.sync.match_sync import sync_matches
 from backend.sync.world_cup_sync import sync_world_cup
+from backend.scheduler.orchestrator import run_youtube_harvest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +39,8 @@ _PLAYER_INTERVAL = 6 * 3600
 _MATCH_INTERVAL_MATCHDAY = 30 * 60
 _MATCH_INTERVAL_NORMAL = 6 * 3600
 _WC_INTERVAL = 1 * 3600
+_YOUTUBE_INTERVAL_NORMAL = 2 * 3600
+_YOUTUBE_INTERVAL_WORLD_CUP = 1 * 3600
 
 
 async def is_match_day() -> bool:
@@ -78,6 +81,18 @@ async def _set_match_day_flag(value: bool) -> None:
         logger.warning("Could not update match_day flag: %s", exc)
 
 
+def _is_world_cup_window() -> bool:
+    today = datetime.now(timezone.utc).date()
+    return date(2026, 6, 11) <= today <= date(2026, 7, 19)
+
+
+def _should_run_youtube_now() -> bool:
+    if _is_world_cup_window():
+        return True
+    now = datetime.now(timezone.utc).time()
+    return dt_time(6, 0) <= now <= dt_time(23, 59)
+
+
 async def run_scheduler() -> None:
     logger.info("=== TipStar sync scheduler starting ===")
     await init_db()
@@ -85,6 +100,7 @@ async def run_scheduler() -> None:
     last_player_sync = 0.0
     last_match_sync = 0.0
     last_wc_sync = 0.0
+    last_youtube_harvest = 0.0
 
     while True:
         now = time.monotonic()
@@ -122,6 +138,16 @@ async def run_scheduler() -> None:
             except Exception as exc:
                 logger.error("Match sync crashed: %s", exc)
             last_match_sync = time.monotonic()
+
+        youtube_interval = _YOUTUBE_INTERVAL_WORLD_CUP if _is_world_cup_window() else _YOUTUBE_INTERVAL_NORMAL
+        if now - last_youtube_harvest >= youtube_interval and _should_run_youtube_now():
+            logger.info("Running YouTube intelligence harvest...")
+            try:
+                result = await run_youtube_harvest(hours=6)
+                logger.info("YouTube intelligence harvest done: %s", result)
+            except Exception as exc:
+                logger.error("YouTube intelligence harvest crashed: %s", exc)
+            last_youtube_harvest = time.monotonic()
 
         # Sleep 60s between each loop tick
         await asyncio.sleep(60)

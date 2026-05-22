@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Check, X, Edit2, Copy, Trash2, CheckCheck, Sparkles } from 'lucide-react'
 import { postTypeColors } from '../styles/theme'
-import { getPendingPosts, approvePost, rejectPost, editPost, deletePost, generatePosts } from '../api/client'
+import { getPendingPosts, approvePost, rejectPost, editPost, deletePost, generatePosts, getGenerationStatus } from '../api/client'
 
 const TYPE_OPTIONS = [
   { value: '',             label: 'All Types' },
@@ -109,6 +109,17 @@ function PostCard({ post, onAction }) {
 
       <HashtagChips raw={post.hashtags} />
 
+      {post.image_url && (
+        <div className="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
+          <img
+            src={post.image_url}
+            alt="Generated post visual preview"
+            className="w-full max-h-[420px] object-contain bg-black"
+            loading="lazy"
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mt-4 flex-wrap">
         <button onClick={handleApprove} disabled={loading}
           className="flex items-center gap-1.5 btn-primary text-sm py-1.5 disabled:opacity-60">
@@ -196,12 +207,40 @@ export default function ApprovalInbox() {
     try {
       const r = await generatePosts(20, minScore)
       setMsg(r.data.message)
-      setTimeout(() => loadPosts(), 8000)
+      pollGenerationJob(r.data.job_id)
     } catch {
-      setMsg('Generation failed — check GROQ_API_KEY.')
-    } finally {
+      setMsg('Generation failed - check GROQ_API_KEY.')
       setGenerating(false)
     }
+  }
+
+  const pollGenerationJob = (jobId) => {
+    if (!jobId) {
+      setGenerating(false)
+      setMsg('Generation started, but no job id was returned. Refresh again in a moment.')
+      return
+    }
+
+    const poll = async () => {
+      try {
+        const r = await getGenerationStatus(jobId)
+        const job = r.data
+        const total = job.total || 0
+        const progress = total ? ` ${job.processed}/${total}` : ''
+        setMsg(`${job.message}${progress} | Posts: ${job.generated_posts || 0} | Skipped: ${job.skipped || 0}`)
+
+        getPendingPosts().then(p => setPosts(p.data)).catch(() => {})
+
+        if (job.status === 'complete' || job.status === 'failed') {
+          setGenerating(false)
+          return
+        }
+      } catch {
+        setMsg('Waiting for generation status...')
+      }
+      setTimeout(poll, 2500)
+    }
+    setTimeout(poll, 1000)
   }
 
   return (

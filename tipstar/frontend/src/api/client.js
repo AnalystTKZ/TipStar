@@ -9,12 +9,14 @@ const api = axios.create({
 // Posts
 export const getPendingPosts  = () => api.get('/posts/pending')
 export const getApprovedPosts = () => api.get('/posts/approved')
+export const getPosts         = (status = '') => api.get('/posts', { params: status ? { status } : {} })
 export const getPostHistory   = () => api.get('/posts/history')
 export const approvePost      = (id) => api.patch(`/posts/${id}/approve`)
 export const rejectPost       = (id) => api.patch(`/posts/${id}/reject`)
 export const editPost         = (id, content) => api.patch(`/posts/${id}/edit`, { content })
 export const deletePost       = (id) => api.delete(`/posts/${id}`)
 export const generatePosts    = (limit = 20, minScore = 5) => api.post('/posts/generate', null, { params: { limit, min_score: minScore } })
+export const getGenerationStatus = (jobId) => api.get(`/posts/generate/status/${jobId}`)
 export const publishApproved  = () => api.post('/posts/publish')
 
 // News

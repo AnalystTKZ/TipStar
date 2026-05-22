@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 import tweepy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -15,7 +16,12 @@ from backend.config.settings import (
     TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET,
     TWITTER_BEARER_TOKEN,
 )
-from backend.database.db import get_session_factory, get_approved_unposted, update_post_status
+from backend.database.db import (
+    get_session_factory,
+    get_approved_unposted,
+    set_post_image_path,
+    update_post_status,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +34,8 @@ logging.basicConfig(
 logger = logging.getLogger("publisher")
 
 _twitter_client = None
+_twitter_api = None
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _get_twitter():
@@ -44,14 +52,44 @@ def _get_twitter():
     return _twitter_client
 
 
-def _post_tweet(content: str) -> tuple[bool, str]:
+def _get_twitter_api():
+    global _twitter_api
+    if _twitter_api is None:
+        auth = tweepy.OAuth1UserHandler(
+            TWITTER_API_KEY,
+            TWITTER_API_SECRET,
+            TWITTER_ACCESS_TOKEN,
+            TWITTER_ACCESS_SECRET,
+        )
+        _twitter_api = tweepy.API(auth, wait_on_rate_limit=True)
+    return _twitter_api
+
+
+def _resolve_image_path(image_path: str | None) -> Path | None:
+    if not image_path:
+        return None
+    path = Path(image_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path if path.exists() else None
+
+
+def _post_tweet(content: str, image_path: str | None = None) -> tuple[bool, str]:
     if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
         return False, "Missing Twitter credentials"
     if len(content) > 280:
         content = content[:277] + "..."
     try:
         client = _get_twitter()
-        response = client.create_tweet(text=content)
+        media_ids = None
+        resolved_image = _resolve_image_path(image_path)
+        if resolved_image:
+            media = _get_twitter_api().media_upload(filename=str(resolved_image))
+            media_ids = [media.media_id]
+        if media_ids:
+            response = client.create_tweet(text=content, media_ids=media_ids)
+        else:
+            response = client.create_tweet(text=content)
         return True, str(response.data["id"])
     except tweepy.TweepyException as e:
         return False, str(e)
@@ -78,7 +116,17 @@ async def run_publish_pipeline():
                 logger.warning(f"Post {post_id} is empty -- skipping")
                 continue
 
-            success, result = _post_tweet(content)
+            image_path = post.get("image_path")
+            if not image_path:
+                try:
+                    from backend.visuals.post_renderer import render_post_visual
+                    image_path = render_post_visual(post)
+                    await set_post_image_path(session, post_id, image_path)
+                    await session.commit()
+                except Exception as exc:
+                    logger.warning("Could not render image for post %s before publish: %s", post_id, exc)
+
+            success, result = _post_tweet(content, image_path=image_path)
             if success:
                 await update_post_status(session, post_id, "posted")
                 await session.commit()

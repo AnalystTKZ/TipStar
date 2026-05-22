@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   PostsOverTimeChart,
   PostTypeChart,
@@ -13,13 +14,27 @@ import {
   getTopPlayers,
 } from '../api/client'
 
-function MetricCard({ label, value, sub }) {
-  return (
-    <div className="card text-center">
+function MetricCard({ label, value, sub, to }) {
+  const content = (
+    <>
       <p className="text-3xl font-bold text-primary">{value ?? '--'}</p>
       <p className="text-sm text-white mt-1">{label}</p>
       {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
-    </div>
+    </>
+  )
+
+  if (!to) {
+    return <div className="card text-center">{content}</div>
+  }
+
+  return (
+    <Link
+      to={to}
+      className="card text-center hover:border-primary focus:border-primary focus:outline-none transition-colors cursor-pointer"
+      title={`Filter by ${label}`}
+    >
+      {content}
+    </Link>
   )
 }
 
@@ -48,10 +63,10 @@ export default function Analytics() {
 
       {/* Metric row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <MetricCard label="Generated Today"  value={summary?.total_today} />
-        <MetricCard label="Approved All Time" value={summary?.approved} />
-        <MetricCard label="Rejected All Time" value={summary?.rejected} />
-        <MetricCard label="Approval Rate" value={approvalRate !== null ? `${approvalRate}%` : null} />
+        <MetricCard label="Generated Today"  value={summary?.total_today} to="/history?status=all&created=today" />
+        <MetricCard label="Approved All Time" value={summary?.approved} to="/history?status=approved" />
+        <MetricCard label="Rejected All Time" value={summary?.rejected} to="/history?status=rejected" />
+        <MetricCard label="Approval Rate" value={approvalRate !== null ? `${approvalRate}%` : null} to="/history?status=approved" />
       </div>
 
       {/* Charts */}

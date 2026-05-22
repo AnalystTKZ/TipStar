@@ -100,6 +100,17 @@ export default function PostCard({ post, onAction }) {
 
       <HashtagChips raw={post.hashtags} />
 
+      {post.image_url && (
+        <div className="mt-4 overflow-hidden rounded-lg border border-border bg-surface">
+          <img
+            src={post.image_url}
+            alt="Generated post visual preview"
+            className="w-full max-h-[420px] object-contain bg-black"
+            loading="lazy"
+          />
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex items-center gap-2 mt-4">
         <button

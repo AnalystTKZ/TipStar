@@ -42,66 +42,39 @@ def _notion_headers() -> dict:
 
 
 def _query_notion_player(name: str) -> Optional[str]:
-    db_id = os.getenv("NOTION_PLAYERS_DB_ID", "")
-    if not db_id:
-        return None
     try:
-        resp = requests.post(
-            f"{_NOTION_BASE}/databases/{db_id}/query",
-            json={"filter": {"property": "Name", "title": {"equals": name}}},
-            headers=_notion_headers(),
-            timeout=15,
-        )
-        if resp.status_code != 200:
-            return None
-        results = resp.json().get("results", [])
-        return results[0]["id"] if results else None
+        from backend.harvester.notion_harvester import _find_page_id
+        return _find_page_id("players", "Name", name)
     except Exception as exc:
         logger.warning("Notion player query error for '%s': %s", name, exc)
         return None
 
 
 def _update_notion_player(page_id: str, facts: dict) -> bool:
-    """Patch only owned factual fields. Never touches Name, Notes, Tier, Content Angle, Position."""
-    props = {}
-
-    if facts.get("current_club") is not None:
-        props["Current Club"] = {
-            "rich_text": [{"text": {"content": str(facts["current_club"])}}]
-        }
-    if facts.get("age") is not None:
-        props["Age"] = {"number": int(facts["age"])}
-    if facts.get("status") is not None:
-        props["Status"] = {"select": {"name": str(facts["status"])}}
-    if facts.get("world_cup_appearances") is not None:
-        props["World Cup Appearances"] = {"number": int(facts["world_cup_appearances"])}
-    if facts.get("world_cup_goals") is not None:
-        props["World Cup Goals"] = {"number": int(facts["world_cup_goals"])}
-    if facts.get("nationality") is not None:
-        props["Nationality"] = {
-            "rich_text": [{"text": {"content": str(facts["nationality"])}}]
-        }
-    if facts.get("market_value_eur") is not None:
-        props["Market Value"] = {"number": int(facts["market_value_eur"])}
-
-    props["Last Updated"] = {
-        "date": {"start": datetime.now(timezone.utc).date().isoformat()}
-    }
-
-    if not props:
-        return True
-
+    """Patch only owned factual fields. Never touches Name, Notes, Tier, Content Angle."""
     try:
-        resp = requests.patch(
-            f"{_NOTION_BASE}/pages/{page_id}",
-            json={"properties": props},
-            headers=_notion_headers(),
-            timeout=15,
-        )
-        return resp.status_code == 200
+        from backend.harvester.notion_harvester import update_player
+        updates = dict(facts)
+        if updates.get("market_value_eur") is not None:
+            updates["market_value"] = _format_market_value(updates["market_value_eur"])
+        return update_player(page_id, updates)
     except Exception as exc:
         logger.warning("Notion player update error for page %s: %s", page_id, exc)
         return False
+
+
+def _format_market_value(value: int | float | str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if numeric >= 1_000_000:
+        return f"EUR {numeric / 1_000_000:.1f}m"
+    if numeric >= 1_000:
+        return f"EUR {numeric / 1_000:.0f}k"
+    return f"EUR {numeric:.0f}"
 
 
 def _fetch_from_transfermarkt(name: str) -> tuple[Optional[dict], str]:
@@ -239,6 +212,8 @@ async def sync_players() -> dict:
                     player.nationality = facts["nationality"]
                 if facts.get("position") is not None and not player.position:
                     player.position = facts["position"]
+                if facts.get("market_value_eur") is not None:
+                    player.market_value = _format_market_value(facts["market_value_eur"])
                 player.updated_at = datetime.utcnow()
                 await session.flush()
 

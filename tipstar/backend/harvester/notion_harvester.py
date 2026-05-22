@@ -508,8 +508,10 @@ def update_player(notion_page_id: str, updates: dict) -> bool:
         "age":                   ("Age",                   _number_prop),
         "world_cup_appearances": ("World Cup Appearances", _number_prop),
         "world_cup_goals":       ("World Cup Goals",       _number_prop),
+        "world_cup_squad":       ("World Cup 2026 Squad",  _checkbox_prop),
         "status":                ("Status",                _select_prop),
         "market_value":          ("Market Value",          _text_prop),
+        "instagram_followers":   ("Instagram Followers",   _text_prop),
         "notes":                 ("Notes",                 _text_prop),
     }
 
@@ -590,7 +592,7 @@ def update_team_live_data(notion_page_id: str, updates: dict) -> bool:
     """
     UPDATE -- mirror live-synced team facts back to Notion.
     Writes: manager, world_cup_group, world_cup_status.
-    Never overwrites priority, playing_style, notes — editorial decisions.
+    Never overwrites priority, playing_style, notes - editorial decisions.
     """
     if not NOTION_API_KEY or not notion_page_id:
         return False

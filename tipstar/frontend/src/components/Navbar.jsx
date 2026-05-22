@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Inbox, BookOpen, BarChart2, Clock } from 'lucide-react'
+import logo from '../logos/logo.png'
 
 const links = [
   { to: '/command-center', label: 'Command Center', icon: LayoutDashboard },
@@ -14,8 +15,7 @@ export default function Navbar() {
     <nav className="bg-secondary border-b border-border sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-16">
         <div className="flex items-center gap-3">
-          <span className="text-2xl font-bold text-primary">TipStar</span>
-          <span className="text-muted text-sm hidden sm:block">Football Intelligence</span>
+          <img src={logo} alt="TipStar" className="h-8 w-auto" />
         </div>
         <div className="flex items-center gap-1 overflow-x-auto">
           {links.map(({ to, label, icon: Icon }) => (

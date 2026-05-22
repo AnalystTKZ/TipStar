@@ -30,7 +30,10 @@ class ScrapeTeamBody(BaseModel):
 def _team_embedding(data: dict) -> list[float] | None:
     try:
         from backend.embeddings.miniLM import encode
-        text = f"{data.get('name', '')} {data.get('league', '')} {data.get('playing_style', '')}"
+        text = (
+            f"{data.get('name', '')} {data.get('country', '')} {data.get('league', '')} "
+            f"{data.get('playing_style', '')} {data.get('priority', '')} {data.get('notes', '')}"
+        )
         return encode(text)
     except Exception:
         return None
@@ -45,7 +48,7 @@ async def list_teams(db: AsyncSession = Depends(get_db)):
 async def sync_all_teams():
     import asyncio
     asyncio.create_task(sync_teams())
-    return {"status": "started", "message": "Team sync running in background — check back in ~1 minute."}
+    return {"status": "started", "message": "Team sync running in background - check back in ~1 minute."}
 
 
 @router.post("/import-from-notion")
@@ -63,9 +66,10 @@ async def import_teams_from_notion(db: AsyncSession = Depends(get_db)):
             embedding = _team_embedding(data)
             if embedding:
                 data["embedding"] = embedding
-            await upsert_team(db, data)
+            async with db.begin_nested():
+                await upsert_team(db, data)
             imported += 1
-        except Exception as exc:
+        except Exception:
             errors += 1
     await db.commit()
     return {"imported": imported, "errors": errors, "total_from_notion": len(teams)}

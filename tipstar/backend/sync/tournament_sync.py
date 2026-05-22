@@ -78,12 +78,16 @@ def _derive_leader(standings_data: dict) -> str | None:
         if standing.get("type") == "TOTAL":
             table = standing.get("table", [])
             if table:
+                if not any((row.get("playedGames") or 0) > 0 for row in table):
+                    return None
                 t = table[0].get("team", {})
                 return t.get("shortName") or t.get("name")
     # Fallback: first standing group first row
     for standing in standings_data.get("standings", []):
         table = standing.get("table", [])
         if table:
+            if not any((row.get("playedGames") or 0) > 0 for row in table):
+                continue
             t = table[0].get("team", {})
             return t.get("shortName") or t.get("name")
     return None

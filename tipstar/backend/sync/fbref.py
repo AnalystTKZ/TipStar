@@ -264,7 +264,7 @@ def _cell_text(row, data_stat: str) -> Optional[str]:
 
 
 def _parse_score(score: str) -> tuple[Optional[int], Optional[int]]:
-    parts = re.split(r"\s*[–-]\s*", score.strip())
+    parts = re.split(r"\s*[--]\s*", score.strip())
     if len(parts) != 2:
         return None, None
     return _safe_int(parts[0]), _safe_int(parts[1])

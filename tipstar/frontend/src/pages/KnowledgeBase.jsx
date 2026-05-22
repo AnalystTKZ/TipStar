@@ -91,7 +91,7 @@ function PlayerRow({ player, rank, onDelete }) {
           )}
         </div>
         <p className="text-xs text-muted truncate">
-          {player.current_club || '—'}{player.position ? ` · ${player.position}` : ''}{player.nationality ? ` · ${player.nationality}` : ''}
+          {player.current_club || '-'}{player.position ? ` · ${player.position}` : ''}{player.nationality ? ` · ${player.nationality}` : ''}
         </p>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0 text-xs text-muted">
@@ -127,7 +127,7 @@ function TeamRow({ team, rank, onDelete }) {
           {team.priority && <span className={`text-xs font-bold ${priorityColor}`}>{team.priority}</span>}
         </div>
         <p className="text-xs text-muted truncate">
-          {team.country || '—'}{team.league ? ` · ${team.league}` : ''}{team.manager ? ` · ${team.manager}` : ''}
+          {team.country || '-'}{team.league ? ` · ${team.league}` : ''}{team.manager ? ` · ${team.manager}` : ''}
         </p>
       </div>
       <div className="flex items-center gap-3 flex-shrink-0 text-xs">
@@ -163,7 +163,7 @@ function TournamentRow({ tournament, rank, onDelete }) {
           <span className="text-xs text-muted">{tournament.type}</span>
         </div>
         <p className="text-xs text-muted truncate">
-          {tournament.current_stage || tournament.status || '—'}
+          {tournament.current_stage || tournament.status || '-'}
           {tournament.current_leader ? ` · Leader: ${tournament.current_leader}` : ''}
           {tournament.host_country ? ` · ${tournament.host_country}` : ''}
         </p>
@@ -190,7 +190,7 @@ function MatchRow({ match }) {
       <div className="flex-1 text-right text-sm font-medium text-white truncate">{match.home_team}</div>
       <div className="text-center px-3 flex-shrink-0">
         {match.home_score !== null ? (
-          <span className="text-sm font-bold text-primary">{match.home_score}–{match.away_score}</span>
+          <span className="text-sm font-bold text-primary">{match.home_score}-{match.away_score}</span>
         ) : (
           <span className="text-xs text-muted">vs</span>
         )}
@@ -267,7 +267,7 @@ export default function KnowledgeBase() {
     try {
       await syncPlayers(); await syncTeams()
       setStatus('Sync running in background (~2 min). Refresh the tab when done.')
-    } catch { setStatus('Sync failed — check backend logs.') }
+    } catch { setStatus('Sync failed - check backend logs.') }
     finally { setSyncing(false) }
   }
 
@@ -275,8 +275,8 @@ export default function KnowledgeBase() {
     setSyncingTournaments(true); setStatus('')
     try {
       await syncTournaments()
-      setStatus('Tournament sync started — standings, leaders, and stage data pulling now (~30s). Refresh when done.')
-    } catch { setStatus('Tournament sync failed — check backend logs.') }
+      setStatus('Tournament sync started - standings, leaders, and stage data pulling now (~30s). Refresh when done.')
+    } catch { setStatus('Tournament sync failed - check backend logs.') }
     finally { setSyncingTournaments(false) }
   }
 

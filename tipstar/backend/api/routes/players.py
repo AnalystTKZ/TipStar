@@ -18,6 +18,10 @@ class PlayerBody(BaseModel):
     age: Optional[int] = None
     world_cup_appearances: Optional[int] = 0
     world_cup_goals: Optional[int] = 0
+    world_cup_squad: Optional[bool] = False
+    market_value: Optional[str] = None
+    instagram_followers: Optional[str] = None
+    content_angle: Optional[str] = None
     status: Optional[str] = "Active"
     notes: Optional[str] = None
 
@@ -31,7 +35,10 @@ class ScrapePlayerBody(BaseModel):
 def _player_embedding(data: dict) -> list[float] | None:
     try:
         from backend.embeddings.miniLM import encode
-        text = f"{data.get('name', '')} {data.get('current_club', '')} {data.get('position', '')}"
+        text = (
+            f"{data.get('name', '')} {data.get('current_club', '')} {data.get('position', '')} "
+            f"{data.get('tier', '')} {data.get('content_angle', '')} {data.get('notes', '')}"
+        )
         return encode(text)
     except Exception:
         return None
@@ -46,7 +53,7 @@ async def list_players(db: AsyncSession = Depends(get_db)):
 async def sync_all_players():
     import asyncio
     asyncio.create_task(sync_players())
-    return {"status": "started", "message": "Player sync running in background — check back in ~2 minutes."}
+    return {"status": "started", "message": "Player sync running in background - check back in ~2 minutes."}
 
 
 @router.post("/import-from-notion")
@@ -64,9 +71,10 @@ async def import_players_from_notion(db: AsyncSession = Depends(get_db)):
             embedding = _player_embedding(data)
             if embedding:
                 data["embedding"] = embedding
-            await upsert_player(db, data)
+            async with db.begin_nested():
+                await upsert_player(db, data)
             imported += 1
-        except Exception as exc:
+        except Exception:
             errors += 1
     await db.commit()
     return {"imported": imported, "errors": errors, "total_from_notion": len(players)}
@@ -114,7 +122,11 @@ async def get_player(player_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("", status_code=201)
 async def create_player(body: PlayerBody, db: AsyncSession = Depends(get_db)):
-    player = await upsert_player(db, body.model_dump())
+    data = body.model_dump()
+    embedding = _player_embedding(data)
+    if embedding:
+        data["embedding"] = embedding
+    player = await upsert_player(db, data)
     await db.commit()
     return player.to_dict()
 

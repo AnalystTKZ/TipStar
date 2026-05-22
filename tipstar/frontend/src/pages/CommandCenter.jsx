@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Inbox, Globe, Zap, Trophy, RefreshCw, Sparkles, Send } from 'lucide-react'
 import WorldCupTicker from '../components/WorldCupTicker'
 import NewsFeed from '../components/NewsFeed'
 import DramaCard from '../components/DramaCard'
-import { getAnalyticsSummary, getPendingPosts, getDrama, harvestNews, generatePosts, publishApproved } from '../api/client'
+import { getAnalyticsSummary, getPendingPosts, getDrama, harvestNews, generatePosts, getGenerationStatus, publishApproved } from '../api/client'
 
-function StatCard({ label, value, icon: Icon, color = '#6CABDD' }) {
-  return (
-    <div className="card flex items-center gap-4">
+function StatCard({ label, value, icon: Icon, color = '#6CABDD', to }) {
+  const content = (
+    <>
       <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${color}20` }}>
         <Icon size={22} style={{ color }} />
       </div>
@@ -15,7 +16,21 @@ function StatCard({ label, value, icon: Icon, color = '#6CABDD' }) {
         <p className="text-2xl font-bold text-white">{value ?? '--'}</p>
         <p className="text-xs text-muted">{label}</p>
       </div>
-    </div>
+    </>
+  )
+
+  if (!to) {
+    return <div className="card flex items-center gap-4">{content}</div>
+  }
+
+  return (
+    <Link
+      to={to}
+      className="card flex items-center gap-4 hover:border-primary focus:border-primary focus:outline-none transition-colors cursor-pointer"
+      title={`Filter by ${label}`}
+    >
+      {content}
+    </Link>
   )
 }
 
@@ -48,9 +63,9 @@ export default function CommandCenter() {
     try {
       const r = await harvestNews()
       const { inserted, skipped, total_fetched } = r.data
-      setHarvestMsg(`Harvested ${total_fetched} stories — ${inserted} new, ${skipped} duplicates.`)
+      setHarvestMsg(`Harvested ${total_fetched} stories - ${inserted} new, ${skipped} duplicates.`)
     } catch {
-      setHarvestMsg('Harvest failed — check NEWS_API_KEY in .env.')
+      setHarvestMsg('Harvest failed - check NEWS_API_KEY in .env.')
     } finally {
       setHarvesting(false)
     }
@@ -62,13 +77,43 @@ export default function CommandCenter() {
     try {
       const r = await generatePosts(genLimit, genMinScore)
       setGenerateMsg(r.data.message)
-      // Reload pending count after a short delay
-      setTimeout(() => { reloadStats() }, 8000)
+      pollGenerationJob(r.data.job_id)
     } catch {
-      setGenerateMsg('Generation failed — check GROQ_API_KEY in .env.')
-    } finally {
+      setGenerateMsg('Generation failed - check GROQ_API_KEY in .env.')
       setGenerating(false)
     }
+  }
+
+  const pollGenerationJob = (jobId) => {
+    if (!jobId) {
+      setGenerating(false)
+      setGenerateMsg('Generation started, but no job id was returned. Refresh the inbox in a moment.')
+      return
+    }
+
+    const poll = async () => {
+      try {
+        const r = await getGenerationStatus(jobId)
+        const job = r.data
+        const total = job.total || 0
+        const progress = total ? ` ${job.processed}/${total}` : ''
+        const generated = job.generated_posts || 0
+        const skipped = job.skipped || 0
+        setGenerateMsg(`${job.message}${progress} | Posts: ${generated} | Skipped: ${skipped}`)
+
+        getPendingPosts().then(p => setPendingCount(p.data.length)).catch(() => {})
+        getAnalyticsSummary().then(s => setStats(s.data)).catch(() => {})
+
+        if (job.status === 'complete' || job.status === 'failed') {
+          setGenerating(false)
+          return
+        }
+      } catch {
+        setGenerateMsg('Waiting for generation status...')
+      }
+      setTimeout(poll, 2500)
+    }
+    setTimeout(poll, 1000)
   }
 
   const handlePublish = async () => {
@@ -79,7 +124,7 @@ export default function CommandCenter() {
       setPublishMsg('Published to X. Check the History tab.')
       reloadStats()
     } catch (e) {
-      const detail = e?.response?.data?.detail || 'Publish failed — check Twitter credentials.'
+      const detail = e?.response?.data?.detail || 'Publish failed - check Twitter credentials.'
       setPublishMsg(detail)
     } finally {
       setPublishing(false)
@@ -94,10 +139,10 @@ export default function CommandCenter() {
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Generated Today"  value={stats?.total_today}  icon={Globe}  color="#6CABDD" />
-        <StatCard label="Pending Approval" value={pendingCount}         icon={Inbox}  color="#F59E0B" />
-        <StatCard label="Approved Today"   value={stats?.approved}      icon={Trophy} color="#22C55E" />
-        <StatCard label="World Cup Posts"  value={stats?.world_cup}     icon={Zap}    color="#EF4444" />
+        <StatCard label="Generated Today"  value={stats?.total_today}  icon={Globe}  color="#6CABDD" to="/history?status=all&created=today" />
+        <StatCard label="Pending Approval" value={pendingCount}         icon={Inbox}  color="#F59E0B" to="/inbox" />
+        <StatCard label="Approved Posts"   value={stats?.approved}      icon={Trophy} color="#22C55E" to="/history?status=approved" />
+        <StatCard label="World Cup Posts"  value={stats?.world_cup}     icon={Zap}    color="#EF4444" to="/history?status=all&wc=1" />
       </div>
 
       {/* Action bar */}

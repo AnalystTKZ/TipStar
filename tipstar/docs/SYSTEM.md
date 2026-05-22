@@ -1,10 +1,10 @@
-# TipStar — System Documentation
+# TipStar --- System Documentation
 
 ## What It Is
 
 TipStar is a semi-automated football content platform built for a global X (Twitter) account. Its job is to monitor the football news cycle, understand what is happening in the world of football using a curated knowledge base, generate opinionated X posts from that context using an LLM, route them through a human approval step, and publish the approved posts to X.
 
-The operator uses Notion as their editorial workspace — players, teams, tournaments, drama, and a content calendar all live there. TipStar reads from Notion, keeps a Supabase database in sync, enriches that data with live scraped facts, and writes discoveries back to Notion automatically.
+The operator uses Notion as their editorial workspace --- players, teams, tournaments, drama, and a content calendar all live there. TipStar reads from Notion, keeps a Supabase database in sync, enriches that data with live scraped facts, and writes discoveries back to Notion automatically.
 
 ---
 
@@ -12,27 +12,27 @@ The operator uses Notion as their editorial workspace — players, teams, tourna
 
 ```
 NOTION (editorial workspace)
-    │  read / write
-    ▼
+    --�  read / write
+    -��
 SUPABASE (live operational database)
-    │  semantic search via pgvector
-    ▼
-FASTAPI BACKEND ─── GROQ LLM (generation)
-    │
-    ▼
+    --�  semantic search via pgvector
+    -��
+FASTAPI BACKEND --------- GROQ LLM (generation)
+    --�
+    -��
 REACT FRONTEND (operator dashboard)
-    │
-    ▼
+    --�
+    -��
 X / TWITTER (published posts)
 ```
 
 The system has five major subsystems:
 
-1. **Harvester** — collects incoming football news from external sources
-2. **Knowledge Base** — stores curated data about players, teams, tournaments, and drama
-3. **Enrichment + Generation** — embeds news semantically, retrieves relevant context, generates posts via Groq
-4. **Approval Pipeline** — routes generated posts through human review before publishing
-5. **Sync Layer** — keeps player, team, match, and tournament data fresh from live APIs and scrapers
+1. **Harvester** --- collects incoming football news from external sources
+2. **Knowledge Base** --- stores curated data about players, teams, tournaments, and drama
+3. **Enrichment + Generation** --- embeds news semantically, retrieves relevant context, generates posts via Groq
+4. **Approval Pipeline** --- routes generated posts through human review before publishing
+5. **Sync Layer** --- keeps player, team, match, and tournament data fresh from live APIs and scrapers
 
 ---
 
@@ -42,25 +42,32 @@ The system has five major subsystems:
 
 **Purpose:** Pull fresh football news every cycle so the generation pipeline always has material to work from.
 
-**Sources:**
-- **NewsAPI** — queries a broad football keyword set (World Cup, Champions League, Haaland, Messi, Mbappe, etc.) for articles published in the last 6 hours
-- **RSS feeds** — polls Man City, UEFA, FIFA, Sky Sports, and ESPN RSS feeds for the last 6 hours
+**Sources (in priority order):**
+- **YouTube Data API** --- monitors official club and federation channels (Man City, Premier League, UEFA, FIFA, Inter Miami, Argentina) for press conferences, interviews, and match highlights published in the last 6 hours. Highest trust: `[OFFICIAL]`
+- **Official RSS feeds** --- Man City, UEFA, FIFA. `[OFFICIAL]`
+- **Trusted RSS feeds** --- BBC Sport Football, Sky Sports, ESPN. `[TRUSTED_NEWS]`
+- **The Guardian Open Platform** --- football section articles published in the last 6 hours. `[TRUSTED_NEWS]`
+- **NewsAPI** --- broad keyword sweep for breaking news. `[TRUSTED_NEWS]`
 
-**Deduplication:** Title-based fuzzy dedup so the same story from multiple outlets does not generate duplicate posts.
+Every story carries a `source_confidence` field (`official` | `trusted_news`) that flows all the way through to the Groq prompt, where the LLM is instructed to apply a strict source trust hierarchy.
+
+**Deduplication:** Title-based hash dedup so the same story from multiple outlets does not generate duplicate posts. Sources with higher confidence are processed first so the cleanest version of a story wins.
 
 **Trigger:** Manual "Fetch latest" button on the Command Center, or triggered automatically at the start of a generation run.
 
 **Key files:**
-- `backend/harvester/harvest.py` — aggregates all sources, deduplicates, returns normalised list
-- `backend/harvester/newsapi_harvester.py` — NewsAPI client
-- `backend/harvester/rss_harvester.py` — RSS feed parser
-- `backend/harvester/deduplicator.py` — title similarity dedup
+- `backend/harvester/harvest.py` --- aggregates all sources in priority order, deduplicates, returns normalised list
+- `backend/harvester/newsapi_harvester.py` --- NewsAPI client
+- `backend/harvester/rss_harvester.py` --- RSS feed parser (official + trusted feeds with confidence labels)
+- `backend/harvester/guardian_harvester.py` --- Guardian Open Platform client
+- `backend/harvester/youtube_harvester.py` --- YouTube Data API v3 client (official channels)
+- `backend/harvester/deduplicator.py` --- title similarity dedup
 
 ---
 
 ### 2. Knowledge Base
 
-**Purpose:** Give the LLM real, curated context so generated posts contain accurate names, stats, tier judgements, and ongoing storylines — not hallucinated generics.
+**Purpose:** Give the LLM real, curated context so generated posts contain accurate names, stats, tier judgements, and ongoing storylines --- not hallucinated generics.
 
 The knowledge base is maintained in **Notion** by the operator and synced to **Supabase** so the backend can query it at speed via pgvector semantic search.
 
@@ -71,19 +78,19 @@ The knowledge base is maintained in **Notion** by the operator and synced to **S
 | `players` | Name, club, nationality, position, tier (T1/T2/T3), age, WC appearances, WC goals, status, notes |
 | `teams` | Name, country, league, manager, WC group, WC status, playing style, priority, notes |
 | `tournaments` | Name, type, status, host country, dates, current stage, leader, top scorer, coverage priority |
-| `matches` | Fixtures and results for 7 tracked competitions — scores, stage, scorers, coverage status |
-| `drama` | Ongoing controversies, bans, feuds, and incidents — severity, summary, status |
+| `matches` | Fixtures and results for 7 tracked competitions --- scores, stage, scorers, coverage status |
+| `drama` | Ongoing controversies, bans, feuds, and incidents --- severity, summary, status |
 | `news` | All harvested articles with full-text and 384-dim embeddings |
-| `posts` | Every generated X post — content, type, relevance score, status, timestamps |
+| `posts` | Every generated X post --- content, type, relevance score, status, timestamps |
 | `world_cup_groups` | Live WC group standings |
 | `world_cup_squads` | WC squad lists per nation |
 
 #### Tiering system
 
 Players are manually tiered in Notion:
-- **Tier 1 Superstar** — Messi, Ronaldo, Haaland, Mbappe, Vinicius etc. Maximum content priority.
-- **Tier 2 Elite** — De Bruyne, Bellingham, Rodri, Salah etc. High priority.
-- **Tier 3 Notable** — Solid professionals worth covering but not the headline name.
+- **Tier 1 Superstar** --- Messi, Ronaldo, Haaland, Mbappe, Vinicius etc. Maximum content priority.
+- **Tier 2 Elite** --- De Bruyne, Bellingham, Rodri, Salah etc. High priority.
+- **Tier 3 Notable** --- Solid professionals worth covering but not the headline name.
 
 Teams have a **priority** field (High / Medium / Low) used to rank them in the dashboard and weight their presence in generation context.
 
@@ -101,10 +108,10 @@ The system reads from and writes to six Notion databases discovered dynamically 
 | Content Calendar | Write generated post ideas for editorial review |
 
 **Key files:**
-- `backend/harvester/notion_harvester.py` — all Notion read/write/update operations
-- `backend/harvester/notion_registry.py` — dynamic DB ID discovery via Notion search API
-- `backend/database/models.py` — SQLAlchemy ORM models
-- `backend/database/db.py` — all async database operations
+- `backend/harvester/notion_harvester.py` --- all Notion read/write/update operations
+- `backend/harvester/notion_registry.py` --- dynamic DB ID discovery via Notion search API
+- `backend/database/models.py` --- SQLAlchemy ORM models
+- `backend/database/db.py` --- all async database operations
 
 ---
 
@@ -118,41 +125,41 @@ Before a news story is passed to Groq, it is enriched with context pulled from t
 
 For each story, the enricher retrieves:
 
-1. **Similar past news** (top 5 by cosine similarity, similarity ≥ 0.5) — so Groq knows what has already been covered and avoids repeating the same angles
-2. **Related players** (top 5) — injected with tier, club, nationality, WC appearances, and WC goals
-3. **Related teams** (top 3) — injected with league, priority, WC group, and editorial notes
-4. **Active/upcoming tournaments** — full current context: stage, leader, top scorer
-5. **Related drama entries** (top 3) — ongoing storylines that might be referenced
+1. **Similar past news** (top 5 by cosine similarity, similarity -�� 0.5) --- so Groq knows what has already been covered and avoids repeating the same angles
+2. **Related players** (top 5) --- injected with tier, club, nationality, WC appearances, and WC goals
+3. **Related teams** (top 3) --- injected with league, priority, WC group, and editorial notes
+4. **Active/upcoming tournaments** --- full current context: stage, leader, top scorer
+5. **Related drama entries** (top 3) --- ongoing storylines that might be referenced
 
 This context is injected into the Groq prompt as structured sections.
 
 **Key files:**
-- `backend/embeddings/miniLM.py` — MiniLM `all-MiniLM-L6-v2` model wrapper (384-dim, CPU)
-- `backend/embeddings/enricher.py` — builds the full context dict for each story
-- `backend/embeddings/similarity.py` — pgvector similarity search functions
+- `backend/embeddings/miniLM.py` --- MiniLM `all-MiniLM-L6-v2` model wrapper (384-dim, CPU)
+- `backend/embeddings/enricher.py` --- builds the full context dict for each story
+- `backend/embeddings/similarity.py` --- pgvector similarity search functions
 
 #### Generation
 
-Groq (`llama3-70b-8192` by default) receives the system prompt and the enriched story and returns a structured JSON bundle with up to 4 post variants:
+Groq (`openai/gpt-oss-120b` by default) receives the system prompt and the enriched story and returns a structured JSON bundle with up to 4 post variants:
 
 | Post type | Format | Limit |
 |---|---|---|
 | **Hot Take** (post_a) | Bold, opinionated, debate-starting | 200 chars |
 | **Data & Stats** (post_b) | Stat-led, number-first, factual | 250 chars |
 | **Tactical / Contextual** (post_c) | Zoomed-out analysis, thread-worthy | 280 chars |
-| **World Cup Narrative** (post_d) | Emotional, legacy-focused storytelling | 280 chars — WC stories only |
+| **World Cup Narrative** (post_d) | Emotional, legacy-focused storytelling | 280 chars --- WC stories only |
 
 Each bundle also includes:
-- `relevance_score` (1–10) — stories below threshold (default 5) are discarded
+- `relevance_score` (1---10) --- stories below threshold (default 5) are discarded
 - `is_world_cup` flag
-- Hashtag suggestions (3–5 per post)
+- Hashtag suggestions (3---5 per post)
 - Best time to post recommendation
 
 The **relevance scoring** follows a tiered priority:
-- 9–10: World Cup match results, Messi/Ronaldo content
-- 7–8: UCL results, Haaland/Mbappe/Bellingham, confirmed transfers
-- 5–6: Major league results, top-6 club news
-- 1–4: Discarded
+- 9---10: World Cup match results, Messi/Ronaldo content
+- 7---8: UCL results, Haaland/Mbappe/Bellingham, confirmed transfers
+- 5---6: Major league results, top-6 club news
+- 1---4: Discarded
 
 After generation, content embeddings are computed so future similarity searches can avoid repeating post angles.
 
@@ -163,9 +170,9 @@ After generation, content embeddings are computed so future similarity searches 
 - Pushes generated post ideas to the Content Calendar
 
 **Key files:**
-- `backend/generator/groq_generator.py` — Groq API client, JSON parsing, embedding
-- `backend/generator/prompt.py` — system prompt and user prompt builder
-- `backend/scheduler/orchestrator.py` — full pipeline: harvest → enrich → generate → persist → write-back
+- `backend/generator/groq_generator.py` --- Groq API client, JSON parsing, embedding
+- `backend/generator/prompt.py` --- system prompt and user prompt builder
+- `backend/scheduler/orchestrator.py` --- full pipeline: harvest -�� enrich -�� generate -�� persist -�� write-back
 
 ---
 
@@ -176,15 +183,15 @@ All generated posts land in the `posts` table with `status = pending`. Nothing g
 #### Post statuses
 
 ```
-pending → approved → posted
-pending → rejected
+pending -�� approved -�� posted
+pending -�� rejected
 ```
 
 #### Operator workflow
 
-1. **Command Center** — operator fetches latest news, generates posts (configurable: how many stories, minimum relevance score), and publishes approved posts to X — all from one screen
-2. **Approval Inbox** — full queue of pending posts grouped by story. Each post shows its type badge, relevance score, char count, and hashtags. Actions per post: approve, reject, edit-then-approve, delete. Bulk approve available. "Generate more" button directly in the inbox.
-3. **Post History** — all posts with `status = posted`, filterable by type, WC flag, and date range
+1. **Command Center** --- operator fetches latest news, generates posts (configurable: how many stories, minimum relevance score), and publishes approved posts to X --- all from one screen
+2. **Approval Inbox** --- full queue of pending posts grouped by story. Each post shows its type badge, relevance score, char count, and hashtags. Actions per post: approve, reject, edit-then-approve, delete. Bulk approve available. "Generate more" button directly in the inbox.
+3. **Post History** --- all posts with `status = posted`, filterable by type, WC flag, and date range
 
 #### Publishing
 
@@ -195,11 +202,11 @@ pending → rejected
 4. Auto-truncates to 277 chars + `...` if content exceeds 280
 
 **Key files:**
-- `backend/api/routes/posts.py` — all post endpoints including generate and publish
-- `backend/scheduler/publisher.py` — Tweepy X client and publish loop
-- `frontend/src/pages/CommandCenter.jsx` — generate + publish controls
-- `frontend/src/pages/ApprovalInbox.jsx` — approval queue with editing
-- `frontend/src/pages/PostHistory.jsx` — published post log
+- `backend/api/routes/posts.py` --- all post endpoints including generate and publish
+- `backend/scheduler/publisher.py` --- Tweepy X client and publish loop
+- `frontend/src/pages/CommandCenter.jsx` --- generate + publish controls
+- `frontend/src/pages/ApprovalInbox.jsx` --- approval queue with editing
+- `frontend/src/pages/PostHistory.jsx` --- published post log
 
 ---
 
@@ -212,7 +219,7 @@ Keeps player facts, match data, and tournament standings accurate without manual
 Pulls live facts for every player in the database from Transfermarkt (primary), FBref (fallback/supplement), and API-Football (optional, paid plan only).
 
 Fields overwritten: `current_club`, `age`, `status`, `nationality`, `world_cup_appearances`, `world_cup_goals`
-Fields never touched: `notes`, `tier`, `content_angle`, `instagram_followers` — editorial decisions
+Fields never touched: `notes`, `tier`, `content_angle`, `instagram_followers` --- editorial decisions
 
 After updating Supabase, it mirrors the changes to the corresponding Notion page.
 
@@ -220,7 +227,7 @@ Runs as a fire-and-forget background task (~2 minutes for a full roster sync due
 
 #### Team sync
 
-Same pattern as player sync — updates factual fields, mirrors to Notion.
+Same pattern as player sync --- updates factual fields, mirrors to Notion.
 
 #### Match sync
 
@@ -237,7 +244,7 @@ Pulls live data from football-data.org for every tournament in the database that
 
 Also pulls World Cup squad data into `world_cup_squads` when a WC tournament is tracked.
 
-**Supported tournament aliases:** World Cup, UCL, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Eredivisie, Primera Liga — all normalised to football-data.org competition codes.
+**Supported tournament aliases:** World Cup, UCL, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Eredivisie, Primera Liga --- all normalised to football-data.org competition codes.
 
 #### World Cup sync
 
@@ -249,10 +256,10 @@ Dedicated sync for WC group standings and squad lists. Pulls from football-data.
 - `backend/sync/match_sync.py`
 - `backend/sync/tournament_sync.py`
 - `backend/sync/world_cup_sync.py`
-- `backend/sync/football_data.py` — football-data.org client
-- `backend/sync/transfermarkt.py` — Transfermarkt scraper
-- `backend/sync/fallback.py` — API-Football client with football-data.org fallback chain
-- `backend/sync/sync_logger.py` — logs each sync run to the database
+- `backend/sync/football_data.py` --- football-data.org client
+- `backend/sync/transfermarkt.py` --- Transfermarkt scraper
+- `backend/sync/fallback.py` --- API-Football client with football-data.org fallback chain
+- `backend/sync/sync_logger.py` --- logs each sync run to the database
 
 ---
 
@@ -316,7 +323,7 @@ All three share the same pattern:
 |---|---|---|
 | Command Center | `/` | Dashboard overview: stats, generate controls, publish button, news feed, drama alerts |
 | Approval Inbox | `/inbox` | Full pending queue grouped by story with editing, bulk approve, delete |
-| Knowledge Base | `/knowledge` | Ranked lists of players, teams, tournaments, matches, drama, and trending topics — with add, delete, sync, and Notion import controls |
+| Knowledge Base | `/knowledge` | Ranked lists of players, teams, tournaments, matches, drama, and trending topics --- with add, delete, sync, and Notion import controls |
 | Post History | `/history` | All published posts with type/date/WC filters |
 | Analytics | `/analytics` | Charts: posts over time, coverage ratio, post type breakdown, top players |
 
@@ -329,8 +336,10 @@ All three share the same pattern:
 | `SUPABASE_DB_URL` | Yes | PostgreSQL connection string (asyncpg-compatible) |
 | `GROQ_API_KEY` | Yes | Groq API key for LLM generation |
 | `NOTION_API_KEY` | Yes | Notion integration token |
-| `NOTION_HQ_PAGE_ID` | Yes | Root Notion page — registry searches under this |
+| `NOTION_HQ_PAGE_ID` | Yes | Root Notion page --- registry searches under this |
 | `NEWS_API_KEY` | Yes | NewsAPI.org key for news harvesting |
+| `GUARDIAN_API_KEY` | Yes | The Guardian Open Platform API key |
+| `YOUTUBE_API_KEY` | Yes | YouTube Data API v3 key for official channel harvesting |
 | `FOOTBALL_DATA_KEY` | Yes | football-data.org API key for tournament/match sync |
 | `TWITTER_API_KEY` | For publishing | X API v2 OAuth credentials |
 | `TWITTER_API_SECRET` | For publishing | |
@@ -338,34 +347,37 @@ All three share the same pattern:
 | `TWITTER_ACCESS_SECRET` | For publishing | |
 | `TWITTER_BEARER_TOKEN` | For publishing | |
 | `API_FOOTBALL_KEY` | Optional | API-Football key (paid plan for player stats) |
-| `GROQ_MODEL` | Optional | Defaults to `llama3-70b-8192` |
-| `MIN_RELEVANCE_SCORE` | Optional | Default 5 — stories below this are discarded |
+| `GROQ_MODEL` | Optional | Defaults to `openai/gpt-oss-120b` |
+| `MIN_RELEVANCE_SCORE` | Optional | Default 5 --- stories below this are discarded |
 | `ENABLE_API_FOOTBALL_PLAYER_SYNC` | Optional | Set `true` to enable paid API-Football player sync |
 | `ENABLE_FBREF_PLAYER_SYNC` | Optional | Set `true` to enable FBref as a player sync source |
 
 ---
 
-## Data Flow — End to End
+## Data Flow --- End to End
 
 ```
 1. HARVEST
-   NewsAPI + RSS feeds → deduplicated stories list
+   YouTube official channels + Official RSS + BBC/Sky/ESPN RSS + Guardian API + NewsAPI
+   -�� deduplicated stories list, each tagged with source_confidence
 
 2. STORE
    Stories inserted into news table (deduplicated by URL)
 
 3. ENRICH
-   Each story title+description → MiniLM 384-dim embedding
-   pgvector similarity search retrieves:
-     - 5 similar past news items (avoid repeating angles)
-     - 5 related players (with tier, club, WC stats)
-     - 3 related teams (with priority, WC group, notes)
-     - All active/upcoming tournaments (stage, leader, scorer)
-     - 3 related drama entries (severity, summary, status)
+   Each story title+description -�� MiniLM 384-dim embedding
+   Similarity search retrieves context, each fact labelled with confidence:
+     - 5 similar past news items [TRUSTED_NEWS / OFFICIAL]
+     - 5 related players [DB_HISTORICAL for club/age, NOTION_EDITORIAL for tier/angles]
+     - 3 related teams [DB_HISTORICAL for facts, NOTION_EDITORIAL for priority/style]
+     - All active/upcoming tournaments [LIVE_API for stage/leader, NOTION_EDITORIAL for editorial]
+     - 3 related drama entries [NOTION_EDITORIAL]
 
 4. GENERATE
-   System prompt + enriched context → Groq llama3-70b-8192
-   Returns JSON: relevance score, is_world_cup, 3–4 post variants
+   System prompt (with trust hierarchy) + enriched context -�� Groq openai/gpt-oss-120b
+   LLM instructed to treat [ARTICLE] as ground truth, [OFFICIAL] as confirmed,
+   [DB_HISTORICAL] and [NOTION_EDITORIAL] as background only --- never as current-state claims
+   Returns JSON: relevance score, is_world_cup, 3---4 post variants
    Posts below MIN_RELEVANCE_SCORE are discarded
 
 5. PERSIST
@@ -379,7 +391,7 @@ All three share the same pattern:
    Bulk approve available for time-sensitive batches
 
 7. PUBLISH
-   POST /api/posts/publish → Tweepy v2 create_tweet
+   POST /api/posts/publish -�� Tweepy v2 create_tweet
    Status updated to posted, posted_at recorded
 ```
 
@@ -391,7 +403,7 @@ All three share the same pattern:
 The operator already uses Notion to track players, teams, and storylines. Treating it as the source of truth for editorial decisions (tiers, priorities, notes) means data entry happens in a familiar interface, not a custom admin panel.
 
 **Why Supabase as the operational database?**
-Supabase provides managed Postgres with the pgvector extension, which enables the semantic similarity search that powers contextual generation. It is the fast operational layer — Notion is the editorial layer.
+Supabase provides managed Postgres with the pgvector extension, which enables the semantic similarity search that powers contextual generation. It is the fast operational layer --- Notion is the editorial layer.
 
 **Why MiniLM for embeddings?**
 `all-MiniLM-L6-v2` is fast, CPU-runnable, and produces 384-dimensional vectors well-suited for semantic similarity in a football news domain. No GPU required. Loads once at startup and is reused across all requests.

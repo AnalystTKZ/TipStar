@@ -100,33 +100,9 @@ async def import_all_from_notion():
     Idempotent -- safe to run multiple times.
     Each row uses a savepoint so one bad row never aborts the whole transaction.
     """
-    import logging
     from backend.database.db import get_session_factory
-    from backend.harvester.notion_harvester import fetch_players, fetch_teams, fetch_drama, fetch_tournaments
-    from backend.database.db import upsert_player, upsert_team, insert_drama as db_insert_drama, upsert_tournament
+    from backend.harvester.notion_sync import sync_notion_knowledge
 
-    log = logging.getLogger(__name__)
     factory = get_session_factory()
-    results = {}
-
-    async def _safe_upsert(session, fn, rows, key):
-        ok = err = 0
-        for row in rows:
-            data = {k: v for k, v in row.items() if k != "_notion_page_id" and v is not None}
-            try:
-                async with session.begin_nested():
-                    await fn(session, data)
-                ok += 1
-            except Exception as exc:
-                log.warning("Notion import skipped row in %s: %s", key, exc)
-                err += 1
-        return {"imported": ok, "errors": err}
-
     async with factory() as session:
-        results["players"]     = await _safe_upsert(session, upsert_player,     fetch_players(),     "players")
-        results["teams"]       = await _safe_upsert(session, upsert_team,       fetch_teams(),       "teams")
-        results["drama"]       = await _safe_upsert(session, db_insert_drama,   fetch_drama(),       "drama")
-        results["tournaments"] = await _safe_upsert(session, upsert_tournament, fetch_tournaments(), "tournaments")
-        await session.commit()
-
-    return results
+        return await sync_notion_knowledge(session, with_embeddings=True)

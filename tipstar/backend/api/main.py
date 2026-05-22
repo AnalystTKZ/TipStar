@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 FRONTEND_ASSETS = FRONTEND_DIST / "assets"
+GENERATED_DIR = PROJECT_ROOT / "generated"
 
 
 def _load_model_background():
@@ -88,6 +89,9 @@ async def api_health():
 
 if FRONTEND_ASSETS.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")
+
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/generated", StaticFiles(directory=str(GENERATED_DIR)), name="generated")
 
 
 @app.get("/", include_in_schema=False)

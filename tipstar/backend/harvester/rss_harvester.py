@@ -2,7 +2,7 @@ import feedparser
 import logging
 from datetime import datetime, timezone
 
-from backend.config.settings import RSS_FEEDS
+from backend.config.settings import RSS_FEEDS_OFFICIAL, RSS_FEEDS_TRUSTED
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,12 @@ def fetch_rss_stories() -> list[dict]:
     results = []
     cutoff = datetime.now(tz=timezone.utc).timestamp() - (6 * 3600)
 
-    for feed_url in RSS_FEEDS:
+    feed_sources = (
+        [(url, "official") for url in RSS_FEEDS_OFFICIAL]
+        + [(url, "trusted_news") for url in RSS_FEEDS_TRUSTED]
+    )
+
+    for feed_url, confidence in feed_sources:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries:
@@ -27,11 +32,12 @@ def fetch_rss_stories() -> list[dict]:
                     "description": entry.get("summary", "").strip(),
                     "url": entry.get("link", ""),
                     "source": feed.feed.get("title", feed_url),
+                    "source_confidence": confidence,
                     "published_at": entry.get("published", ""),
                 })
-            logger.info(f"RSS [{feed_url}]: {len(feed.entries)} entries")
+            logger.info("RSS [%s]: %d entries", feed_url, len(feed.entries))
         except Exception as e:
-            logger.error(f"RSS failed for {feed_url}: {e}")
+            logger.error("RSS failed for %s: %s", feed_url, e)
 
     return results
 

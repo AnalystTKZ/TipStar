@@ -44,5 +44,6 @@ def _normalise(a: dict) -> dict | None:
         "description": (a.get("description") or "").strip(),
         "url": a.get("url", ""),
         "source": a.get("source", {}).get("name", "NewsAPI"),
+        "source_confidence": "trusted_news",
         "published_at": a.get("publishedAt", ""),
     }
