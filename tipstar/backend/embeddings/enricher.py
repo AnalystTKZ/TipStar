@@ -236,18 +236,28 @@ def _format_tournaments(rows: list[dict]) -> str:
 def _format_drama(rows: list[dict]) -> str:
     if not rows:
         return "No related drama entries found."
+    from datetime import datetime, timedelta
+    stale_cutoff = datetime.utcnow() - timedelta(days=30)
     lines = []
     for r in rows:
+        status = r.get("status", "")
+        # Skip resolved drama older than 30 days — irrelevant as context.
+        updated_str = r.get("updated_at") or r.get("created_at")
+        if status == "Resolved" and updated_str:
+            try:
+                updated = datetime.fromisoformat(str(updated_str).replace("Z", "+00:00")).replace(tzinfo=None)
+                if updated < stale_cutoff:
+                    continue
+            except (ValueError, TypeError):
+                pass
         severity = (r.get("severity") or "").upper()
         title = r.get("title", "")
-        status = r.get("status", "")
         summary = (r.get("summary") or "")[:100]
-        # Drama is NOTION_EDITORIAL - manually curated background context, may be stale.
         line = f"- [{severity}] {title} ({status}) [NOTION_EDITORIAL]"
         if summary:
             line += f" - {summary}"
         lines.append(line)
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "No related drama entries found."
 
 
 def _format_facts(rows: list[dict]) -> str:

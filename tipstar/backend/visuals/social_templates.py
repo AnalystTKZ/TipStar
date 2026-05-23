@@ -91,12 +91,11 @@ def render_standard_post(
     draw.rectangle((0, 1070, 1080, 1080), fill=SKY)
     _corner_slashes(draw, 806, 64, SKY)
     _brand_lockup(img, draw, 72, 42, logo_size=56)
-    _pill(draw, "DATA DROP", 72, 146, SKY, DARK)
 
     _draw_wrapped_text(
         draw,
         payload.content,
-        box=(72, 248, 880, 500),
+        box=(72, 200, 880, 560),
         font_path=FONT_BOLD,
         max_size=78,
         min_size=42,
@@ -166,13 +165,11 @@ def render_hot_take(
     _corner_slashes(draw, 760, 64, SKY)
     draw.rectangle((0, 0, 14, 1080), fill=SKY)
     _brand_lockup(img, draw, 72, 48, logo_size=52)
-    draw.text((72, 150), "HOT TAKE", font=_font(FONT_BOLD, 34), fill=SKY)
-    draw.line((72, 202, 330, 202), fill=SKY, width=5)
 
     _draw_wrapped_text(
         draw,
         content,
-        box=(72, 292, 900, 520),
+        box=(72, 200, 900, 620),
         font_path=FONT_ITALIC,
         max_size=86,
         min_size=44,
@@ -199,7 +196,6 @@ def render_player_spotlight(
     draw.rectangle((536, 0, 546, 1080), fill=SKY)
 
     _brand_lockup(img, draw, 72, 50, logo_size=50)
-    draw.text((72, 138), "PLAYER SPOTLIGHT", font=_font(FONT_BOLD, 28), fill=SKY)
     _draw_wrapped_text(
         draw,
         payload.player_name,

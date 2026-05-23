@@ -120,6 +120,7 @@ async def _ensure_runtime_schema(conn) -> None:
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS market_value VARCHAR(50)",
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS instagram_followers VARCHAR(50)",
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS content_angle TEXT",
+        "ALTER TABLE drama ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now()",
         """
         CREATE TABLE IF NOT EXISTS tournaments (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -403,22 +404,43 @@ async def get_approved_unposted(session: AsyncSession) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 async def upsert_player(session: AsyncSession, data: dict) -> Player:
-    """Insert or update a player by name."""
+    """
+    Insert or update a player by name.
+
+    Field ownership:
+      EDITORIAL (always written from Notion): name, nationality, position, tier,
+        world_cup_appearances, world_cup_goals, world_cup_squad, instagram_followers,
+        content_angle, notes
+      LIVE (only written when no recent live-sync exists, i.e. new row or Notion is
+        the only source so far): current_club, age, status, market_value
+
+    This prevents a Notion sync from reverting live facts that player_sync just
+    wrote from Transfermarkt / FBref.
+    """
     result = await session.execute(select(Player).where(Player.name == data.get("name")))
     player = result.scalar_one_or_none()
-    if not player:
+    is_new = player is None
+    if is_new:
         player = Player()
         session.add(player)
-    for field in ["name", "nationality", "current_club", "position", "tier",
-                  "age", "world_cup_appearances", "world_cup_goals", "status",
-                  "world_cup_squad", "market_value", "instagram_followers",
-                  "content_angle", "notes"]:
+
+    # Editorial fields — Notion is always authoritative, overwrite every time.
+    for field in ["name", "nationality", "position", "tier",
+                  "world_cup_appearances", "world_cup_goals", "world_cup_squad",
+                  "instagram_followers", "content_angle", "notes"]:
         if field in data:
-            # content_angle may come in as a list from Notion multi-select
             val = data[field]
             if field == "content_angle" and isinstance(val, list):
                 val = ", ".join(str(v) for v in val if v)
             setattr(player, field, val)
+
+    # Live-fact fields — only write from Notion if this is a new row.
+    # For existing rows, player_sync (Transfermarkt) owns these; Notion may be stale.
+    if is_new:
+        for field in ["current_club", "age", "status", "market_value"]:
+            if field in data and data[field] is not None:
+                setattr(player, field, data[field])
+
     if data.get("embedding"):
         player.embedding = json.dumps(data["embedding"])
     player.updated_at = datetime.utcnow()
@@ -619,6 +641,7 @@ async def upsert_drama(session: AsyncSession, data: dict) -> Drama:
         drama.drama_date = _parse_date(data.get("drama_date"))
     if data.get("embedding"):
         drama.embedding = json.dumps(data["embedding"])
+    drama.updated_at = datetime.utcnow()
     await session.flush()
     return drama
 

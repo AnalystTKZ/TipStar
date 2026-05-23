@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Copy, Filter, Send } from 'lucide-react'
-import { getPosts, publishApproved } from '../api/client'
+import { Copy, Filter, Send, Pencil, Trash2, Check, X } from 'lucide-react'
+import { getPosts, publishApproved, editPost, deletePost } from '../api/client'
 import { postTypeColors } from '../styles/theme'
 
 function TypeBadge({ type }) {
@@ -16,13 +16,59 @@ function TypeBadge({ type }) {
   )
 }
 
-function HistoryEntry({ post }) {
-  const [copied, setCopied] = useState(false)
+function CharCount({ text, limit }) {
+  const len = (text || '').length
+  const color = len > limit ? 'text-red-400' : len > limit * 0.85 ? 'text-yellow-400' : 'text-muted'
+  return <span className={`text-xs tabular-nums ${color}`}>{len}/{limit}</span>
+}
+
+function HistoryEntry({ post, onUpdated, onDeleted }) {
+  const [copied, setCopied]     = useState(false)
+  const [editing, setEditing]   = useState(false)
+  const [draft, setDraft]       = useState(post.content)
+  const [saving, setSaving]     = useState(false)
+  const [deleteArmed, setDeleteArmed] = useState(false)
+  const deleteTimer = useRef(null)
+
+  const isApproved = post.status === 'approved'
 
   function copy() {
     navigator.clipboard.writeText(post.caption || post.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  function startEdit() {
+    setDraft(post.content)
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+    setDraft(post.content)
+  }
+
+  async function saveEdit() {
+    if (!draft.trim() || draft === post.content) { cancelEdit(); return }
+    setSaving(true)
+    try {
+      await editPost(post.id, draft.trim())
+      onUpdated(post.id, draft.trim())
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function armDelete() {
+    setDeleteArmed(true)
+    deleteTimer.current = setTimeout(() => setDeleteArmed(false), 3000)
+  }
+
+  async function confirmDelete() {
+    clearTimeout(deleteTimer.current)
+    await deletePost(post.id)
+    onDeleted(post.id)
   }
 
   const displayDate = post.posted_at || post.created_at
@@ -40,7 +86,36 @@ function HistoryEntry({ post }) {
         <span className="text-xs text-muted ml-auto">{displayDateLabel}: {shownAt}</span>
       </div>
       <p className="text-xs text-muted mb-2 line-clamp-1">{post.story_title}</p>
-      <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">{post.content}</p>
+
+      {editing ? (
+        <div className="mt-1">
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            rows={5}
+            className="w-full bg-surface border border-primary rounded-lg p-3 text-sm text-white resize-none focus:outline-none"
+            autoFocus
+          />
+          <div className="flex items-center justify-between mt-1">
+            <CharCount text={draft} limit={280} />
+            <div className="flex gap-2">
+              <button onClick={cancelEdit} className="flex items-center gap-1 text-xs text-muted hover:text-white transition-colors px-2 py-1">
+                <X size={12} /> Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={saving || !draft.trim()}
+                className="flex items-center gap-1 text-xs bg-primary text-secondary px-3 py-1 rounded-lg disabled:opacity-50"
+              >
+                <Check size={12} /> {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">{post.content}</p>
+      )}
+
       <div className="border border-border rounded-lg bg-secondary/60 p-3 mt-3">
         <p className="text-[10px] uppercase tracking-wider text-primary mb-1">X caption</p>
         <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">{post.caption || post.content}</p>
@@ -64,13 +139,27 @@ function HistoryEntry({ post }) {
           />
         </div>
       )}
-      <button
-        onClick={copy}
-        className="flex items-center gap-1.5 text-xs text-muted hover:text-primary mt-3 transition-colors"
-      >
-        <Copy size={12} />
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
+
+      <div className="flex items-center gap-3 mt-3">
+        <button onClick={copy} className="flex items-center gap-1.5 text-xs text-muted hover:text-primary transition-colors">
+          <Copy size={12} />
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+        {isApproved && !editing && (
+          <>
+            <button onClick={startEdit} className="flex items-center gap-1.5 text-xs text-muted hover:text-primary transition-colors">
+              <Pencil size={12} /> Edit
+            </button>
+            <button
+              onClick={deleteArmed ? confirmDelete : armDelete}
+              className={`flex items-center gap-1.5 text-xs transition-colors ${deleteArmed ? 'text-red-400 hover:text-red-300' : 'text-muted hover:text-red-400'}`}
+            >
+              <Trash2 size={12} />
+              {deleteArmed ? 'Confirm delete' : 'Delete'}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -107,6 +196,14 @@ export default function PostHistory() {
   const [dateTo, setDateTo]       = useState(searchParams.get('created') === 'today' ? todayISO() : '')
   const [publishing, setPublishing] = useState(false)
   const [publishMsg, setPublishMsg] = useState('')
+
+  function handleUpdated(id, newContent) {
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, content: newContent } : p))
+  }
+
+  function handleDeleted(id) {
+    setPosts(prev => prev.filter(p => p.id !== id))
+  }
 
   useEffect(() => {
     const nextStatus = searchParams.get('status') || 'posted'
@@ -236,7 +333,9 @@ export default function PostHistory() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {filtered.map(post => <HistoryEntry key={post.id} post={post} />)}
+        {filtered.map(post => (
+          <HistoryEntry key={post.id} post={post} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+        ))}
       </div>
     </div>
   )

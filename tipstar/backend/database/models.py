@@ -340,6 +340,7 @@ class Drama(Base):
     drama_date = Column(Date)
     embedding = Column(Text)  # VECTOR(384) in Supabase
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self) -> dict:
         return {
@@ -354,6 +355,7 @@ class Drama(Base):
             "source": self.source,
             "drama_date": self.drama_date.isoformat() if self.drama_date else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

@@ -20,7 +20,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from backend.database.db import get_session_factory, init_db
 from backend.sync.player_sync import sync_players
+from backend.sync.team_sync import sync_teams
 from backend.sync.match_sync import sync_matches
+from backend.sync.tournament_sync import sync_tournaments
 from backend.sync.world_cup_sync import sync_world_cup
 from backend.scheduler.orchestrator import run_youtube_harvest
 
@@ -36,6 +38,8 @@ logger = logging.getLogger("sync_scheduler")
 
 # Intervals in seconds
 _PLAYER_INTERVAL = 6 * 3600
+_TEAM_INTERVAL = 6 * 3600
+_TOURNAMENT_INTERVAL = 1 * 3600
 _MATCH_INTERVAL_MATCHDAY = 30 * 60
 _MATCH_INTERVAL_NORMAL = 6 * 3600
 _WC_INTERVAL = 1 * 3600
@@ -98,6 +102,8 @@ async def run_scheduler() -> None:
     await init_db()
 
     last_player_sync = 0.0
+    last_team_sync = 0.0
+    last_tournament_sync = 0.0
     last_match_sync = 0.0
     last_wc_sync = 0.0
     last_youtube_harvest = 0.0
@@ -114,6 +120,26 @@ async def run_scheduler() -> None:
             except Exception as exc:
                 logger.error("Player sync crashed: %s", exc)
             last_player_sync = time.monotonic()
+
+        # Team sync every 6 hours (manager changes, league updates)
+        if now - last_team_sync >= _TEAM_INTERVAL:
+            logger.info("Running team sync...")
+            try:
+                result = await sync_teams()
+                logger.info("Team sync done: %s", result)
+            except Exception as exc:
+                logger.error("Team sync crashed: %s", exc)
+            last_team_sync = time.monotonic()
+
+        # Tournament sync every hour (stage, leader, scorer — changes with each matchday)
+        if now - last_tournament_sync >= _TOURNAMENT_INTERVAL:
+            logger.info("Running tournament sync...")
+            try:
+                result = await sync_tournaments()
+                logger.info("Tournament sync done: %s", result)
+            except Exception as exc:
+                logger.error("Tournament sync crashed: %s", exc)
+            last_tournament_sync = time.monotonic()
 
         # World Cup sync every hour
         if now - last_wc_sync >= _WC_INTERVAL:
