@@ -104,6 +104,8 @@ class Post(Base):
     )
     content = Column(Text, nullable=False)
     caption = Column(Text)
+    caption_style = Column(String(50))
+    image_suggestion = Column(Text)
     hashtags = Column(String(500))
     best_time = Column(String(200))
     source_url = Column(String(500))
@@ -131,6 +133,8 @@ class Post(Base):
             "post_type": self.post_type.value if isinstance(self.post_type, PostType) else self.post_type,
             "content": self.content,
             "caption": self.caption,
+            "caption_style": self.caption_style,
+            "image_suggestion": self.image_suggestion,
             "hashtags": self.hashtags,
             "best_time": self.best_time,
             "source_url": self.source_url,

@@ -52,12 +52,14 @@ def generate_posts(
             logger.info(f"Score {score} below threshold: {news_item.get('title')}")
             return None
 
-        # Embed each post content for similarity search later
-        for key in ("post_a", "post_b", "post_c", "post_d"):
-            post = result.get(key)
-            if post and post.get("content"):
-                post["caption"] = _normalise_caption(post)
-                post["embedding"] = encode(post["content"])
+        # Normalise the new flat output shape.
+        # post_body is the image text; caption is the hook above the image.
+        post_body = (result.get("post_body") or "").strip()
+        caption = (result.get("caption") or "").strip()
+        if post_body:
+            result["post_body"] = post_body
+            result["caption"] = _normalise_caption_flat(caption, result.get("hashtags", []))
+            result["embedding"] = encode(post_body)
 
         return result
 
@@ -140,30 +142,17 @@ def _looks_robotic(result: dict) -> bool:
         "the manager expressed",
         "will be hoping",
     )
-    hits = 0
-    for key in ("post_a", "post_b", "post_c", "post_d"):
-        post = result.get(key)
-        if not post:
-            continue
-        text = f"{post.get('content', '')} {post.get('caption', '')}".lower()
-        hits += sum(1 for phrase in banned if phrase in text)
-    return hits >= 1
+    text = f"{result.get('post_body', '')} {result.get('caption', '')}".lower()
+    return sum(1 for phrase in banned if phrase in text) >= 1
 
 
-def _normalise_caption(post: dict) -> str:
-    content = (post.get("content") or "").strip()
-    caption = (post.get("caption") or "").strip()
-    hashtags = post.get("hashtags") or []
-    if isinstance(hashtags, str):
-        tags = [t.strip() for t in re.split(r"[,\s]+", hashtags) if t.strip()]
-    else:
-        tags = [str(t).strip() for t in hashtags if str(t).strip()]
-    tag_text = " ".join(t if t.startswith("#") else f"#{t}" for t in tags[:3])
-
-    if not caption:
-        caption = content
-    if tag_text and not any(tag.lower() in caption.lower() for tag in tags):
-        caption = f"{caption}\n\n{tag_text}".strip()
-    if len(caption) > 260:
-        caption = caption[:257].rstrip() + "..."
+def _normalise_caption_flat(caption: str, hashtags) -> str:
+    """
+    Build the final X caption text (shown above the image).
+    Caption is the short hook — hashtags are NOT appended here,
+    they go on the post body / image only.
+    """
+    caption = (caption or "").strip()
+    if len(caption) > 280:
+        caption = caption[:277].rstrip() + "..."
     return caption

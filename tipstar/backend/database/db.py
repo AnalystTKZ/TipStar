@@ -115,6 +115,8 @@ async def _ensure_runtime_schema(conn) -> None:
         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS published_at VARCHAR(100)",
         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_path VARCHAR(500)",
         "ALTER TABLE posts ADD COLUMN IF NOT EXISTS caption TEXT",
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS caption_style VARCHAR(50)",
+        "ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_suggestion TEXT",
         "ALTER TABLE news ADD COLUMN IF NOT EXISTS source_confidence VARCHAR(50) DEFAULT 'trusted_news'",
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS world_cup_squad BOOLEAN DEFAULT false",
         "ALTER TABLE players ADD COLUMN IF NOT EXISTS market_value VARCHAR(50)",
@@ -267,44 +269,57 @@ async def set_news_embedding(session: AsyncSession, news_id: str, embedding: lis
 # ---------------------------------------------------------------------------
 
 async def insert_posts(session: AsyncSession, generated: dict, news_id=None) -> int:
-    """Insert all post variants from a Groq-generated bundle. Returns count inserted."""
+    """
+    Insert a post from a Groq-generated bundle.
+    New output shape: flat object with caption, post_body, post_type, caption_style,
+    image_suggestion, hashtags, best_time.
+    """
     story_title = generated.get("story_title", "")
     relevance_score = int(generated.get("relevance_score", 0))
     is_world_cup = bool(generated.get("is_world_cup", False))
 
-    rows = []
-    for key, post_type in _POST_TYPE_MAP.items():
-        post_data = generated.get(key)
-        if not post_data:
-            continue
-        content = (post_data.get("content") or "").strip()
-        if not content:
-            continue
-        caption = (post_data.get("caption") or "").strip()
-        hashtags_raw = post_data.get("hashtags", [])
-        hashtags = ", ".join(hashtags_raw) if isinstance(hashtags_raw, list) else (hashtags_raw or "")
-        emb = post_data.get("embedding")
-        rows.append(Post(
-            news_id=news_id,
-            story_title=story_title,
-            relevance_score=relevance_score,
-            is_world_cup=is_world_cup,
-            post_type=post_type,
-            content=content,
-            caption=caption or _build_caption_fallback(content, hashtags),
-            hashtags=hashtags,
-            best_time=post_data.get("best_time", ""),
-            status=PostStatus.pending,
-            embedding=json.dumps(emb) if emb else None,
-        ))
-
-    if not rows:
+    post_body = (generated.get("post_body") or "").strip()
+    if not post_body:
         return 0
 
-    session.add_all(rows)
+    caption = (generated.get("caption") or "").strip()
+    hashtags_raw = generated.get("hashtags", [])
+    hashtags = ", ".join(hashtags_raw) if isinstance(hashtags_raw, list) else (hashtags_raw or "")
+    post_type_str = (generated.get("post_type") or "hot_take").lower().replace(" ", "_")
+    # Map new post_type strings to PostType enum
+    _type_map = {
+        "match_stat":    PostType.data_stats,
+        "quote":         PostType.hot_take,
+        "data_stats":    PostType.data_stats,
+        "hot_take":      PostType.hot_take,
+        "wc_narrative":  PostType.wc_narrative,
+    }
+    post_type = _type_map.get(post_type_str, PostType.hot_take)
+    emb = generated.get("embedding")
+
+    post = Post(
+        news_id=news_id,
+        story_title=story_title,
+        relevance_score=relevance_score,
+        is_world_cup=is_world_cup,
+        post_type=post_type,
+        content=post_body,
+        caption=caption,
+        hashtags=hashtags,
+        best_time=generated.get("best_time", ""),
+        status=PostStatus.pending,
+        embedding=json.dumps(emb) if emb else None,
+    )
+    # Store extra fields if the columns exist
+    if hasattr(Post, "caption_style"):
+        post.caption_style = generated.get("caption_style", "")
+    if hasattr(Post, "image_suggestion"):
+        post.image_suggestion = generated.get("image_suggestion", "")
+
+    session.add(post)
     await session.flush()
-    logger.info(f"Inserted {len(rows)} posts for: {story_title}")
-    return len(rows)
+    logger.info(f"Inserted post for: {story_title}")
+    return 1
 
 
 def _build_caption_fallback(content: str, hashtags: str) -> str:
